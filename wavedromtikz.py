@@ -211,6 +211,8 @@ TIKZ_HEADER = r"""
 	   -- ([yshift=\vend, xshift=\transitionwidth]last brick)
 	   -- ++(#1*\wavewidth - \transitionwidth,0);
 	
+	\coordinate (last transition) at ([xshift=0.5*\transitionwidth]last brick);
+	
 	\advancebrick{#1}
 }
 
@@ -235,6 +237,8 @@ TIKZ_HEADER = r"""
 	\draw [#3]
 	      ([yshift=\vend, xshift=\curvedtransitionwidth]last brick)
 	   -- ++(#1*\wavewidth - \curvedtransitionwidth,0);
+	
+	\coordinate (last transition) at ([xshift=0.5*\curvedtransitionwidth]last brick);
 	
 	\advancebrick{#1}
 }
@@ -265,6 +269,8 @@ TIKZ_HEADER = r"""
 	   -- ([xshift=#1*\wavewidth,    yshift=-0.5*\waveheight]last brick)
 	   ;
 	
+	\coordinate (last transition) at ([xshift=0.5*\transitionwidth]last brick);
+	
 	\advancebrick{#1}
 }
 
@@ -289,6 +295,8 @@ TIKZ_HEADER = r"""
 	   -- ([xshift=\transitionwidth, yshift=-0.5*\waveheight]last brick)
 	   -- ([xshift=#1*\wavewidth,    yshift=-0.5*\waveheight]last brick)
 	   ;
+	
+	\coordinate (last transition) at ([xshift=0.5*\transitionwidth]last brick);
 	
 	\advancebrick{#1}
 }
@@ -318,6 +326,8 @@ TIKZ_HEADER = r"""
 	\draw [#3]
 	      ([xshift=\transitionwidth, yshift=\voffset]last brick)
 	   -- ([xshift=#1*\wavewidth,    yshift=\voffset]last brick);
+	
+	\coordinate (last transition) at ([xshift=0.5*\transitionwidth]last brick);
 	
 	\advancebrick{#1}
 }
@@ -349,6 +359,8 @@ TIKZ_HEADER = r"""
 	\draw [#3]
 	      ([xshift=\curvedtransitionwidth, yshift=\voffset]last brick)
 	   -- ([xshift=#1*\wavewidth,    yshift=\voffset]last brick);
+	
+	\coordinate (last transition) at ([xshift=0.5*\curvedtransitionwidth]last brick);
 	
 	\advancebrick{#1}
 }
@@ -638,6 +650,10 @@ def render_waveform(signal_params):
 	
 	# Draw the waveform, one timeslot at a time
 	for time, (signal, node_name) in enumerate(zip(wave, node)):
+		# Add a coordinate (which may be overwritten by a transition brick) to
+		# indicate the current transition point
+		out.append(r"\coordinate (last transition) at (last brick);")
+		
 		# Add coordinates for bus labels
 		if signal not in '.|' and bus_started:
 			out.append(r"\coordinate (bus %d) at ($(bus start)!0.5!(last brick)$);"%(
@@ -665,6 +681,10 @@ def render_waveform(signal_params):
 		
 		# Second half of the waveform
 		out.append(get_brick(WAVEDROM_NAMES[continued_signal], 1, period))
+		
+		# Record transition node positions
+		if node_name != ".":
+			out.append(r"\coordinate (%s) at (last transition);"%(node_name))
 		
 		# Draw the spacer spacer
 		if signal == "|":
@@ -715,10 +735,11 @@ def render_wavedrom(wavedrom):
 
 if __name__=="__main__":
 	print(render_wavedrom( { "name": "test"
-	                       , "wave": "=.=.=.=."
+	                       , "wave": "=.=.z.=.=."
+	                       , "node":"..a."
 	                       , "phase": 0.0
 	                       , "period": 1.0
-	                       , "data": "eqs two"
+	                       , "data": "eqs two three"
 	                       }
 	                     )
 	     )
