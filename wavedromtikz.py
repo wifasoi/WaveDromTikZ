@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import re
-import json
+import yaml
 
 from math import ceil
 from collections import namedtuple
@@ -9,6 +9,9 @@ from collections import namedtuple
 # A TikZ (LaTeX) header to be included before a waveform diagram. Defines
 # various primitives for drawing parts of a waveform.
 TIKZ_HEADER = r"""
+% Seperation between lines
+\pgfmathsetlengthmacro{\wavesep}{2.0em}
+
 % Height of a waveform
 \pgfmathsetlengthmacro{\waveheight}{1.2em}
 
@@ -24,16 +27,17 @@ TIKZ_HEADER = r"""
 % Special signal styles
 \tikzset{wave x/.style={pattern=north east lines}}
 \tikzset{wave bus/.style={fill=white}}
-\tikzset{wave busyellow/.style={fill=yellow!50!white}}
-\tikzset{wave busorange/.style={fill=orange!50!white}}
-\tikzset{wave busblue/.style={fill=blue!50!white}}
+\tikzset{wave busyellow/.style={fill=yellow!25!white}}
+\tikzset{wave busorange/.style={fill=orange!25!white}}
+\tikzset{wave busblue/.style={fill=blue!25!white}}
 \tikzset{wave pulled/.style={dotted}}
 
 % Label for a signal. Arguments:
 %  #1: The human-readable label string
 \newcommand{\signallabel}[1]{
 	\node [ anchor=east
-	      , left=0 of wave start
+	      , left=0 of last waveform
+	      , minimum height=\waveheight
 	      ]
 	      {#1};
 }
@@ -51,6 +55,7 @@ TIKZ_HEADER = r"""
 	\node [ inner sep=0
 	      , minimum height=\waveheight
 	      , anchor=mid
+	      , font=\footnotesize
 	      ]
 	      at ([shift={(0.5*\transitionwidth,0)}]#1)
 	      {#2};
@@ -157,12 +162,44 @@ TIKZ_HEADER = r"""
 	\advancebrick{#1}
 }
 
-% Generic sharp *-to-bit transition
+% Generic sharp bit-to-bit transition
+%  #1: brick width
+%  #2: Brick style
+%  #3: Old bit (offset from bottom)
+%  #4: New bit (offset from bottom)
+%  #5: Include arrow
+\newcommand{\bricksharpbittobit}[5]{
+	\pgfmathsetlengthmacro{\vstart}{(#3-0.5)*\waveheight}
+	\pgfmathsetlengthmacro{\vend}{(#4-0.5)*\waveheight}
+	
+	% The transition and new bit
+	\draw [#2]
+	      ([yshift=\vstart]last brick)
+	   -- ([yshift=\vend]last brick)
+	   -- ++(#1*\wavewidth,0);
+	
+	% Arrow (if required)
+	\ifthenelse{\equal{#5}{1}}{
+		\ifthenelse{\not\equal{#3}{#4}}{
+			\path [decoration={ markings
+			                  , mark=at position 0.5 with {\arrow{>}}
+			                  }
+			      , postaction={decorate}
+			      ]
+			      ([yshift=\vstart]last brick)
+			   -- ([yshift=\vend]last brick);
+		}{}
+	}{}
+	
+	\advancebrick{#1}
+}
+
+% Generic sharp bus-to-bit transition
 %  #1: brick width
 %  #2: Brick style
 %  #3: New bit (offset from bottom)
 %  #4: Include arrow
-\newcommand{\bricksharptobit}[4]{
+\newcommand{\bricksharpbustobit}[4]{
 	\pgfmathsetlengthmacro{\vstart}{((1-#3)-0.5)*\waveheight}
 	\pgfmathsetlengthmacro{\vend}{(#3-0.5)*\waveheight}
 	
@@ -499,9 +536,10 @@ def get_transition_brick(last_wave, wave, brick_width):
 			# A glitch
 			if wave.bit_transition in ("sharp", "sharparrow"):
 				# Sharp glitch, possibly with arrow
-				return r"\bricksharptobit{%f}{%s}{%s}{%d}"%(
+				return r"\bricksharpbittobit{%f}{%s}{%f}{%f}{%d}"%(
 					brick_width,
 					wave.bit_style,
+					last_wave.bit_end_position,
 					wave.bit_start_position,
 					wave.bit_transition == "sharparrow",
 				)
@@ -518,11 +556,12 @@ def get_transition_brick(last_wave, wave, brick_width):
 			# Level changed
 			if wave.bit_transition in ("sharp", "sharparrow"):
 				# Sharp transition, possibly with arrow
-				return r"\bricksharptobit{%f}{%s}{%f}{%d}"%(
+				return r"\bricksharpbittobit{%f}{%s}{%f}{%f}{%d}"%(
 					brick_width,
 					wave.bit_style,
+					last_wave.bit_end_position,
 					wave.bit_start_position,
-					wave.bit_transition == "sharparrow"
+					wave.bit_transition == "sharparrow",
 				)
 			elif wave.bit_transition == "smooth":
 				# Smooth transition
@@ -556,7 +595,7 @@ def get_transition_brick(last_wave, wave, brick_width):
 		# Bus-to-bit transition
 		if wave.bit_transition in ("sharp", "sharparrow"):
 			# Sharp transition, possibly with arrow
-			return r"\bricksharptobit{%f}{%s}{%f}{%d}"%(
+			return r"\bricksharpbustobit{%f}{%s}{%f}{%d}"%(
 				brick_width,
 				wave.bit_style,
 				wave.bit_start_position,
@@ -612,13 +651,17 @@ def render_waveform(signal_params):
 	"""
 	Produce TikZ for just the waveform of a given signal.
 	"""
-	wave   = signal_params["wave"]
-	node   = signal_params.get("node", [])
+	wave   = signal_params.get("wave", "")
+	node   = signal_params.get("node", "")
 	data   = signal_params.get("data", [])
 	phase  = signal_params.get("phase", 0.0)
 	period = signal_params.get("period", 1.0)
 	
 	assert period >= 0.0, "Period must be positive or zero."
+	
+	# No waveform for empty description
+	if wave == "":
+		return ""
 	
 	# Pad node list
 	node += "." * max(0, len(wave)-len(node))
@@ -628,13 +671,10 @@ def render_waveform(signal_params):
 		data = data.split(" ")
 	
 	# Set up the 'last brick' pointer at the start of the waveform.
-	out = [r"\coordinate (last brick) at (wave start);"]
-	
-	# Put the waveform in a scope to allow clipping
-	out.append(r"\begin{scope}")
+	out = [r"\coordinate (last brick) at (last waveform);"]
 	
 	# Start assuming the signal is x if not otherwise specified
-	last_signal = "x" if wave[0] == "." else wave[0]
+	last_signal = "x" if wave[0] in ".|" else wave[0]
 	
 	# Draw the first part of the waveform to get the phase right
 	if phase < 0.0:
@@ -704,42 +744,73 @@ def render_waveform(signal_params):
 	for i, datum in zip(range(bus_number), data):
 		out.append(r"\busdata{bus %d}{%s};"%(i, datum))
 	
-	out.append(r"\end{scope}")
 	return "\n".join(out)
 
 
-def render_signal(signal_params, tikz_position="(0,0)"):
+def render_signal(signal_params):
 	"""
 	Produce a TikZ string defining the given waveform line with parameters as used
 	by WaveDrom.
 	"""
 	return r"""
-		\coordinate (wave start) at %s;
 		\signallabel{%s}
-		%s
+		%% A scope to ensure correct styling and limit the effect of clipping
+		\begin{scope}[line cap=rect, line join=round]
+			%s
+		\end{scope}
+		\coordinate (last waveform) at ([yshift=-\wavesep]last waveform);
 	"""%(
-		tikz_position,
 		signal_params.get("name", ""),
 		render_waveform(signal_params)
 	)
 
 
+def render_help_lines(wavedrom):
+	"""
+	Produce TikZ for a set of helplines on clock edges large enough to fill the
+	space taken by the given WaveDrom.
+	"""
+	width = max( (int(len(signal.get("wave","")) * signal.get("period", 1.0))
+	                   - int(signal.get("phase", 0.0)))
+	             for signal in wavedrom["signal"]
+	           )
+	
+	height = len(wavedrom["signal"])
+	
+	return r"""
+		\foreach \tick in {0,...,%d}{
+			\draw [draw=black!75!white, dotted]
+			      ([xshift=\tick*2.0*\wavewidth,yshift=0.5*\waveheight]last waveform)
+			   -- ++(0, -%d*\wavesep + \wavesep - \waveheight);
+		}
+	"""%(
+		width, height
+	)
+
+
 def render_wavedrom(wavedrom):
 	return r"""
-		\begin{tikzpicture}[line cap=rect, line join=round]
+		\begin{tikzpicture}
+			%s
+			\coordinate (last waveform);
 			%s
 			%s
 		\end{tikzpicture}
-	"""%(TIKZ_HEADER, render_signal(wavedrom))
+	"""%( TIKZ_HEADER
+	    , render_help_lines(wavedrom)
+	    , "\n".join( render_signal(signal_params)
+	                 for signal_params in wavedrom["signal"]
+	               )
+	    )
 
 
 if __name__=="__main__":
-	print(render_wavedrom( { "name": "test"
-	                       , "wave": "=.=.z.=.=."
-	                       , "node":"..a."
-	                       , "phase": 0.0
-	                       , "period": 1.0
-	                       , "data": "eqs two three"
-	                       }
-	                     )
-	     )
+	print(render_wavedrom(yaml.load(r"""
+{ signal: [
+  { name: "clk",         wave: "p.....|..." },
+  { name: "Data",        wave: "x.345x|=.x", data: ["head", "body", "tail", "data"] },
+  { name: "Request",     wave: "0.1..0|1.0" },
+  {},
+  { name: "Acknowledge", wave: "1.....|01." }
+]}
+	""".strip())))
