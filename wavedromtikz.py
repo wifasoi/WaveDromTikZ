@@ -3,9 +3,14 @@
 import re
 import json
 
+from math import ceil
+from collections import namedtuple
+
+# A TikZ (LaTeX) header to be included before a waveform diagram. Defines
+# various primitives for drawing parts of a waveform.
 TIKZ_HEADER = r"""
 % Height of a waveform
-\pgfmathsetlengthmacro{\waveheight}{1em}
+\pgfmathsetlengthmacro{\waveheight}{1.2em}
 
 % Width of a brick (half a cycle)
 \pgfmathsetlengthmacro{\wavewidth}{1em}
@@ -14,14 +19,14 @@ TIKZ_HEADER = r"""
 \pgfmathsetlengthmacro{\transitionwidth}{0.3em}
 
 % Width of the curve on slow signal changes (e.g. to z)
-\pgfmathsetlengthmacro{\slowtransitionwidth}{0.5em}
+\pgfmathsetlengthmacro{\curvedtransitionwidth}{1.0em}
 
 % Special signal styles
 \tikzset{wave x/.style={pattern=north east lines}}
 \tikzset{wave bus/.style={fill=white}}
-\tikzset{wave busyellow/.style={fill=yellow}}
-\tikzset{wave busorange/.style={fill=orange}}
-\tikzset{wave busblue/.style={fill=blue}}
+\tikzset{wave busyellow/.style={fill=yellow!50!white}}
+\tikzset{wave busorange/.style={fill=orange!50!white}}
+\tikzset{wave busblue/.style={fill=blue!50!white}}
 \tikzset{wave pulled/.style={dotted}}
 
 % Label for a signal. Arguments:
@@ -39,441 +44,520 @@ TIKZ_HEADER = r"""
 	\coordinate (last brick) at ([shift={(#1*\wavewidth,0)}]last brick);
 }
 
-% Draw a brick truncated.
+% Draw a truncated brick.
 %  #1: Width of a brick
 %  #2: Truncation offset (positive to truncate the front, negative off the back)
 %  #3: The brick
-\newcommand{\truncatebrick}[3]{
+%  #4: The number of bricks
+\newcommand{\truncatebrick}[4]{
 	\begin{scope}
 		\coordinate (last brick) at ([shift={(-#2*\wavewidth,0)}]last brick);
-		\clip ([shift={(#2*\wavewidth, 0.5*\waveheight)}]last brick)
-		      rectangle ++(#1*\wavewidth-#2*\wavewidth,-\waveheight);
+		\clip ([shift={(#2*\wavewidth, 0.6*\waveheight)}]last brick)
+		      rectangle ++(#4*#1*\wavewidth-#2*\wavewidth,-1.2*\waveheight);
 		#3
 	\end{scope}
 }
 
 % Generic mid-bus brick
-%  #1: 0 for odd, 1 for even half-ticks
-%  #2: brick width
-%  #3: fill style
-\newcommand{\brickgenericbus}[3]{
-	\fill [#3]
+%  #1: brick width
+%  #2: brick style
+\newcommand{\brickbus}[2]{
+	\fill [#2]
 	      ([yshift= 0.5*\waveheight]last brick)
-	   -- ++(#2*\wavewidth,0)
+	   -- ++(#1*\wavewidth,0)
 	   -- ++(0,-\waveheight)
-	   -- ++(-#2*\wavewidth,0)
+	   -- ++(-#1*\wavewidth,0)
 	   -- cycle
 	    ;
-	\draw ([yshift= 0.5*\waveheight]last brick) -- ++(#2*\wavewidth,0)
-	      ([yshift=-0.5*\waveheight]last brick) -- ++(#2*\wavewidth,0)
+	\draw ([yshift= 0.5*\waveheight]last brick) -- ++(#1*\wavewidth,0)
+	      ([yshift=-0.5*\waveheight]last brick) -- ++(#1*\wavewidth,0)
 	    ;
 	
-	\advancebrick{#2}
+	\advancebrick{#1}
 }
 
-\newcommand{\brickx}[2]{        \brickgenericbus{#1}{#2}{wave x}}
-\newcommand{\brickbus}[2]{      \brickgenericbus{#1}{#2}{wave bus}}
-\newcommand{\brickbusyellow}[2]{\brickgenericbus{#1}{#2}{wave busyellow}}
-\newcommand{\brickbusorange}[2]{\brickgenericbus{#1}{#2}{wave busorange}}
-\newcommand{\brickbusblue}[2]{  \brickgenericbus{#1}{#2}{wave busblue}}
-
-
-% Straight line signals
-%  #1: 0 for odd, 1 for even half-ticks
-%  #2: brick width
-%  #3: Line offset (from center)
-%  #4: Line style
-\newcommand{\brickgenericline}[4]{
-	\draw [#4] ([yshift=#3]last brick) -- ++(#2*\wavewidth,0);
-	\advancebrick{#2}
-}
-
-\newcommand{\brickz}[2]{            \brickgenericline{#1}{#2}{0}{}}
-
-\newcommand{\brickhigh}[2]{         \brickgenericline{#1}{#2}{ 0.5*\waveheight}{}}
-\newcommand{\bricklow}[2]{          \brickgenericline{#1}{#2}{-0.5*\waveheight}{}}
-
-\newcommand{\brickclkhigh}[2]{      \brickgenericline{#1}{#2}{ 0.5*\waveheight}{}}
-\newcommand{\brickclklow}[2]{       \brickgenericline{#1}{#2}{-0.5*\waveheight}{}}
-
-\newcommand{\brickclkhigharrow}[2]{ \brickgenericline{#1}{#2}{ 0.5*\waveheight}{}}
-\newcommand{\brickclklowarrow}[2]{  \brickgenericline{#1}{#2}{-0.5*\waveheight}{}}
-
-\newcommand{\brickpullup}[2]{       \brickgenericline{#1}{#2}{ 0.5*\waveheight}{wave pulled}}
-\newcommand{\brickpulldown}[2]{     \brickgenericline{#1}{#2}{-0.5*\waveheight}{wave pulled}}
-
-
-% Clock signals
-%  #1: 0 for odd, 1 for even half-ticks
-%  #2: brick width
-%  #3: First-edge line offset (from center)
-%  #4: 0 no arrow, 1 arrow
-\newcommand{\brickgenericclk}[4]{
-	\pgfmathsetlengthmacro{\voffset}{(1-(2*#1)) * #3*\waveheight}
+% Generic mid-bit brick
+%  #1: brick width
+%  #2: Line style
+%  #3: Start line offset (from bottom)
+%  #4: End line offset (from bottom)
+%  #5: Add arrow on transition
+\newcommand{\brickbit}[5]{
+	\pgfmathsetlengthmacro{\vstart}{(#3-0.5)*\waveheight}
+	\pgfmathsetlengthmacro{\vend}{(#4-0.5)*\waveheight}
 	
-	% Draw the clock
-	\draw ([yshift=-0.5*\voffset]last brick)
-	   -- ++(0,\voffset)
-	   -- ++(#2*\wavewidth,0);
+	% The bit value
+	\draw [#2]
+	      ([yshift=\vend]last brick)
+	   |- ([yshift=\vstart, xshift=#1*\wavewidth]last brick);
 	
-	% Add arrow
-	\ifthenelse{\equal{#1}{0}}{
-		\ifthenelse{\equal{#4}{1}}{
-			\path [decoration={ markings
-			                  , mark=at position 0.5 with {\arrow{>}}
-			                  }
-			      , postaction={decorate}
-			      ]
-			      ([yshift=-0.5*\voffset]last brick)
-			   -- ++(0,\voffset);
-		}{}
+	% Arrow (if required)
+	\ifthenelse{\equal{#5}{1}}{
+		\path [decoration={ markings
+		                  , mark=at position 0.5 with {\arrow{>}}
+		                  }
+		      , postaction={decorate}
+		      ]
+		      ([yshift=\vend]last brick)
+		   -- ([yshift=\vstart]last brick);
 	}{}
 	
-	\advancebrick{#2}
+	\advancebrick{#1}
 }
 
-\newcommand{\brickpclk}[2]{      \brickgenericclk{#1}{#2}{ 1.0}{0}}
-\newcommand{\bricknclk}[2]{      \brickgenericclk{#1}{#2}{-1.0}{0}}
-\newcommand{\brickpclkarrow}[2]{ \brickgenericclk{#1}{#2}{ 1.0}{1}}
-\newcommand{\bricknclkarrow}[2]{ \brickgenericclk{#1}{#2}{-1.0}{1}}
-
-
-% Sharp transitions
+% Generic bit-glitch brick
 %  #1: brick width
-%  #2: Edge start (offset from center)
-%  #3: Edge end (offset from center)
-%  #4: 0 no arrow, 1 arrow
-\newcommand{\brickgenericsharptransition}[4]{
-	\pgfmathsetlengthmacro{\vstart}{#2*\waveheight}
-	\pgfmathsetlengthmacro{\vend}{#3*\waveheight}
+%  #2: Style
+%  #3: Edge start (offset from bottom)
+\newcommand{\brickbitglitch}[3]{
+	\pgfmathsetlengthmacro{\voffset}{(#3-0.5)*\waveheight}
 	
-	% Draw edge
-	\draw ([yshift=0.5*\vstart]last brick)
-	   -- ([yshift=0.5*\vend]last brick)
+	\draw [#2]
+	      ([yshift=\voffset]last brick)
+	   -- ([xshift=0.5*\transitionwidth]last brick)
+	   -- ([yshift=\voffset, xshift=\transitionwidth]last brick)
+	   -- ++(#1*\wavewidth - \transitionwidth,0);
+	
+	\advancebrick{#1}
+}
+
+% Generic sharp *-to-bit transition
+%  #1: brick width
+%  #2: Brick style
+%  #3: New bit (offset from bottom)
+%  #4: Include arrow
+\newcommand{\bricksharptobit}[4]{
+	\pgfmathsetlengthmacro{\vstart}{((1-#3)-0.5)*\waveheight}
+	\pgfmathsetlengthmacro{\vend}{(#3-0.5)*\waveheight}
+	
+	% The transition and new bit
+	\draw [#2]
+	      ([yshift=\vstart]last brick)
+	   -- ([yshift=\vend]last brick)
 	   -- ++(#1*\wavewidth,0);
 	
-	% Add arrow
+	% Arrow (if required)
 	\ifthenelse{\equal{#4}{1}}{
 		\path [decoration={ markings
 		                  , mark=at position 0.5 with {\arrow{>}}
 		                  }
 		      , postaction={decorate}
 		      ]
-		      ([yshift=0.5*\vstart]last brick)
-		   -- ([yshift=0.5*\vend]last brick);
+		      ([yshift=\vstart]last brick)
+		   -- ([yshift=\vend]last brick);
 	}{}
 	
 	\advancebrick{#1}
 }
 
-
-% Soft transitions
+% Generic soft bit-to-bit transition
 %  #1: brick width
-%  #2: Edge start (offset from center)
-%  #3: Edge end (offset from center)
-\newcommand{\brickgenericsofttransition}[3]{
-	\pgfmathsetlengthmacro{\vstart}{#2*\waveheight}
-	\pgfmathsetlengthmacro{\vend}{#3*\waveheight}
+%  #2: Last brick style
+%  #3: This brick style
+%  #4: Last bit (offset from bottom)
+%  #5: New bit (offset from bottom)
+\newcommand{\bricksmoothbittobit}[5]{
+	\pgfmathsetlengthmacro{\vstart}{(#4-0.5)*\waveheight}
+	\pgfmathsetlengthmacro{\vend}{(#5-0.5)*\waveheight}
 	
-	\draw ([yshift=0.5*\vstart]last brick)
-	   -- ([yshift=0.5*\vend, xshift=\transitionwidth]last brick)
+	% Scale the transition depending on the magnitude of the level change
+	\pgfmathsetlengthmacro{\thistranswidth}{abs(#4-#5)*\transitionwidth}
+	\pgfmathsetlengthmacro{\thisleadwidth}{\transitionwidth - \thistranswidth}
+	
+	% The lead up to the transition
+	\draw [#2]
+	      ([yshift=\vstart]last brick)
+	   -- ([yshift=\vstart, xshift=\thisleadwidth]last brick);
+	
+	% The transition itself
+	\draw [#3]
+	      ([yshift=\vstart, xshift=\thisleadwidth]last brick)
+	   -- ([yshift=\vend, xshift=\transitionwidth]last brick)
 	   -- ++(#1*\wavewidth - \transitionwidth,0);
 	
 	\advancebrick{#1}
 }
 
-
-% Short soft transitions
+% Generic curved bit-to-bit transition
 %  #1: brick width
-%  #2: Edge start (offset from center)
-%  #3: Edge end (offset from center)
-\newcommand{\brickgenericshortsofttransition}[3]{
-	\pgfmathsetlengthmacro{\vstart}{#2*\waveheight}
-	\pgfmathsetlengthmacro{\vend}{#3*\waveheight}
+%  #2: Last brick style
+%  #3: This brick style
+%  #4: Last bit (offset from bottom)
+%  #5: New bit (offset from bottom)
+\newcommand{\brickcurvedbittobit}[5]{
+	\pgfmathsetlengthmacro{\vstart}{(#4-0.5)*\waveheight}
+	\pgfmathsetlengthmacro{\vend}{(#5-0.5)*\waveheight}
 	
-	\draw ([yshift=0.5*\vstart]                             last brick)
-	   -- ([yshift=0.5*\vstart, xshift=0.5*\transitionwidth]last brick)
-	   -- ([yshift=0.5*\vend,   xshift=    \transitionwidth]last brick)
-	   -- ++(#1*\wavewidth - \transitionwidth,0);
+	% The curve itself
+	\draw [#2]
+	      ([yshift=\vstart]last brick)
+	   .. controls ([yshift=\vstart]last brick)
+	           and ([yshift=\vend, xshift=0.2*\curvedtransitionwidth]last brick)
+	   .. ([yshift=\vend, xshift=\curvedtransitionwidth]last brick);
+	
+	% Start of the new bit
+	\draw [#3]
+	      ([yshift=\vend, xshift=\curvedtransitionwidth]last brick)
+	   -- ++(#1*\wavewidth - \curvedtransitionwidth,0);
 	
 	\advancebrick{#1}
 }
 
-
-% Slow (curved) transitions
+% Generic soft transition from bit to bus
 %  #1: brick width
-%  #2: Edge start (offset from center)
-%  #3: Edge end (offset from center)
-%  #4: Line style
-\newcommand{\brickgenericslowtransition}[4]{
-	\pgfmathsetlengthmacro{\vstart}{#2*\waveheight}
-	\pgfmathsetlengthmacro{\vend}{#3*\waveheight}
+%  #2: Bit style
+%  #3: Bus style
+%  #4: Bit (offset from bottom)
+\newcommand{\bricksmoothbittobus}[4]{
+	\pgfmathsetlengthmacro{\voffset}{(#4-0.5)*\waveheight}
 	
-	\draw [#4]
-	      ([yshift=0.5*\vstart]last brick)
-	   .. controls ([yshift=0.5*\vstart]last brick)
-	           and ([yshift=0.5*\vend, xshift=0.2*\slowtransitionwidth]last brick)
-	   .. ([yshift=0.5*\vend, xshift=\slowtransitionwidth]last brick)
-	   -- ++(#1*\wavewidth - \slowtransitionwidth,0);
+	% Scale the transition depending on the magnitude of the level change
+	\pgfmathsetlengthmacro{\thistranswidth}{(abs(#4-0.5)+0.5)*\transitionwidth}
+	\pgfmathsetlengthmacro{\thisleadwidth}{\transitionwidth - \thistranswidth}
+	
+	% The lead up to the transition
+	\draw [#2]
+	      ([yshift=\voffset]last brick)
+	   -- ([yshift=\voffset, xshift=\thisleadwidth]last brick);
+	
+	% Open-up the bus
+	\draw [#3]
+	      ([xshift=#1*\wavewidth,    yshift= 0.5*\waveheight]last brick)
+	   -- ([xshift=\transitionwidth, yshift= 0.5*\waveheight]last brick)
+	   -- ([xshift=\thisleadwidth,   yshift=     \voffset]   last brick)
+	   -- ([xshift=\transitionwidth, yshift=-0.5*\waveheight]last brick)
+	   -- ([xshift=#1*\wavewidth,    yshift=-0.5*\waveheight]last brick)
+	   ;
 	
 	\advancebrick{#1}
 }
 
-
-% Transient transitions
+% Generic smooth transition from bus to bus
 %  #1: brick width
-%  #2: Edge start (offset from center)
-\newcommand{\brickgenerictransienttransition}[2]{
-	\pgfmathsetlengthmacro{\voffset}{#2*\waveheight}
+%  #2: Bus style
+%  #3: Bit style
+\newcommand{\brickbustobus}[3]{
 	
-	\draw ([yshift=0.5*\voffset]last brick)
+	% Close-down the old bus
+	\draw [#2]
+	      ([yshift= 0.5*\waveheight]    last brick)
 	   -- ([xshift=0.5*\transitionwidth]last brick)
-	   -- ([yshift=0.5*\voffset, xshift=\transitionwidth]last brick)
-	   -- ++(#1*\wavewidth - \transitionwidth,0);
+	   -- ([yshift=-0.5*\waveheight]    last brick)
+	   ;
+	
+	% Open-up the new bus
+	\draw [#3]
+	      ([xshift=#1*\wavewidth,    yshift= 0.5*\waveheight]last brick)
+	   -- ([xshift=\transitionwidth, yshift= 0.5*\waveheight]last brick)
+	   -- ([xshift=0.5*\transitionwidth]                     last brick)
+	   -- ([xshift=\transitionwidth, yshift=-0.5*\waveheight]last brick)
+	   -- ([xshift=#1*\wavewidth,    yshift=-0.5*\waveheight]last brick)
+	   ;
 	
 	\advancebrick{#1}
 }
 
-
-% Soft transitions between buses
+% Generic smooth transition from bus to bit
 %  #1: brick width
-%  #2: Start bus style
-%  #3: End bus style
-\newcommand{\brickgenericbustransition}[3]{
-	% Close-off starting bus
+%  #2: Bus style
+%  #3: Bit style
+%  #4: Bit (offset from bottom)
+\newcommand{\bricksmoothbustobit}[4]{
+	\pgfmathsetlengthmacro{\voffset}{(#4-0.5)*\waveheight}
+	
+	% Scale the transition depending on the magnitude of the level change
+	\pgfmathsetlengthmacro{\thistranswidth}{(abs(#4-0.5)+0.5)*\transitionwidth}
+	\pgfmathsetlengthmacro{\thisleadwidth}{\transitionwidth - \thistranswidth}
+	
+	% Close-down the bus
+	\draw [#2]
+	      ([                         yshift= 0.5*\waveheight]last brick)
+	   -- ([xshift=\thisleadwidth,   yshift= 0.5*\waveheight]last brick)
+	   -- ([xshift=\transitionwidth, yshift=     \voffset]   last brick)
+	   -- ([xshift=\thisleadwidth,   yshift=-0.5*\waveheight]last brick)
+	   -- ([                         yshift=-0.5*\waveheight]last brick)
+	   ;
+	
+	% The new bit
+	\draw [#3]
+	      ([xshift=\transitionwidth, yshift=\voffset]last brick)
+	   -- ([xshift=#1*\wavewidth,    yshift=\voffset]last brick);
+	
+	\advancebrick{#1}
+}
+
+% Generic curved transition from bus to bit
+%  #1: brick width
+%  #2: Bus style
+%  #3: Bit style
+%  #4: Bit (offset from bottom)
+\newcommand{\brickcurvedbustobit}[4]{
+	\pgfmathsetlengthmacro{\voffset}{(#4-0.5)*\waveheight}
+	
+	% Scale the transition depending on the magnitude of the level change
+	\pgfmathsetlengthmacro{\thistranswidth}{(abs(#4-0.5)+0.5)*\transitionwidth}
+	\pgfmathsetlengthmacro{\thisleadwidth}{\transitionwidth - \thistranswidth}
+	
+	% Close-down the bus
 	\draw [#2]
 	      ([yshift= 0.5*\waveheight]last brick)
-	   -- ([xshift= 0.5*\transitionwidth]last brick)
-	   -- ([yshift=-0.5*\waveheight]last brick);
-	
-	% Open-up ending bus
-	\draw [#3]
-	      ([xshift= \wavewidth,           yshift= 0.5*\waveheight]last brick)
-	   -- ([xshift= 1.0*\transitionwidth, yshift= 0.5*\waveheight]last brick)
-	   -- ([xshift= 0.5*\transitionwidth]last brick)
-	   -- ([xshift= 1.0*\transitionwidth, yshift=-0.5*\waveheight]last brick)
-	   -- ([xshift= \wavewidth,           yshift=-0.5*\waveheight]last brick)
+	   .. controls ([                                   yshift= 0.5*\waveheight]last brick)
+	           and ([xshift=0.2*\curvedtransitionwidth, yshift=     \voffset]   last brick)
+	   .. ([xshift=\curvedtransitionwidth, yshift= \voffset]last brick)
+	   .. controls ([xshift=0.2*\curvedtransitionwidth, yshift=     \voffset]   last brick)
+	           and ([                                   yshift=-0.5*\waveheight]last brick)
+	   .. ([yshift=-0.5*\waveheight]last brick)
 	   ;
+	
+	% The new bit
+	\draw [#3]
+	      ([xshift=\curvedtransitionwidth, yshift=\voffset]last brick)
+	   -- ([xshift=#1*\wavewidth,    yshift=\voffset]last brick);
 	
 	\advancebrick{#1}
 }
-
-
-% Soft transitions into buses
-%  #1: brick width
-%  #2: Start edge (offset from center)
-%  #3: End bus style
-\newcommand{\brickgenericbusintransition}[3]{
-	\pgfmathsetlengthmacro{\voffset}{#2*\waveheight}
-	
-	% Open-up ending bus
-	\draw [#3]
-	      ([xshift= \wavewidth,           yshift= 0.5*\waveheight]last brick)
-	   -- ([xshift= 1.0*\transitionwidth, yshift= 0.5*\waveheight]last brick)
-	   -- ([                              yshift= 0.5*\voffset]   last brick)
-	   -- ([xshift= 1.0*\transitionwidth, yshift=-0.5*\waveheight]last brick)
-	   -- ([xshift= \wavewidth,           yshift=-0.5*\waveheight]last brick)
-	   ;
-	
-	\advancebrick{#1}
-}
-
-% Clk constants transitions
-\newcommand{\bricktoclkhigh}[1]{ \brickgenericsharptransition{#1}{-1}{ 1}{0}}
-\newcommand{\bricktoclklow}[1]{  \brickgenericsharptransition{#1}{ 1}{-1}{0}}
-
-\newcommand{\bricktoclkhigharrow}[1]{ \brickgenericsharptransition{#1}{-1}{ 1}{1}}
-\newcommand{\bricktoclklowarrow}[1]{  \brickgenericsharptransition{#1}{ 1}{-1}{1}}
-
-% Soft transitions to 1 and 0
-\newcommand{        \bricklowtohigh}[1]{ \brickgenericsofttransition{#1}{-1}{ 1}}
-\newcommand{       \brickpclktohigh}[1]{ \brickgenericsofttransition{#1}{-1}{ 1}}
-\newcommand{  \brickpclkarrowtohigh}[1]{ \brickgenericsofttransition{#1}{-1}{ 1}}
-\newcommand{     \brickclklowtohigh}[1]{ \brickgenericsofttransition{#1}{-1}{ 1}}
-\newcommand{\brickclklowarrowtohigh}[1]{ \brickgenericsofttransition{#1}{-1}{ 1}}
-\newcommand{   \brickpulldowntohigh}[1]{ \brickgenericsofttransition{#1}{-1}{ 1}}
-
-\newcommand{        \brickhightolow}[1]{ \brickgenericsofttransition{#1}{ 1}{-1}}
-\newcommand{        \bricknclktolow}[1]{ \brickgenericsofttransition{#1}{ 1}{-1}}
-\newcommand{   \bricknclkarrowtolow}[1]{ \brickgenericsofttransition{#1}{ 1}{-1}}
-\newcommand{     \brickclkhightolow}[1]{ \brickgenericsofttransition{#1}{ 1}{-1}}
-\newcommand{\brickclkhigharrowtolow}[1]{ \brickgenericsofttransition{#1}{ 1}{-1}}
-\newcommand{      \brickpulluptolow}[1]{ \brickgenericsofttransition{#1}{ 1}{-1}}
-
-% Soft short transitions to 1 and 0
-\newcommand{\brickztohigh}[1]{ \brickgenericshortsofttransition{#1}{0}{ 1}}
-\newcommand{\brickztolow}[1]{  \brickgenericshortsofttransition{#1}{0}{-1}}
-
-% Transient transitions to 1 and 0
-\newcommand{        \brickhightohigh}[1]{\brickgenerictransienttransition{#1}{ 1}}
-\newcommand{        \bricknclktohigh}[1]{\brickgenerictransienttransition{#1}{ 1}}
-\newcommand{   \bricknclkarrowtohigh}[1]{\brickgenerictransienttransition{#1}{ 1}}
-\newcommand{     \brickclkhightohigh}[1]{\brickgenerictransienttransition{#1}{ 1}}
-\newcommand{\brickclkhigharrowtohigh}[1]{\brickgenerictransienttransition{#1}{ 1}}
-
-\newcommand{        \bricklowtolow}[1]{\brickgenerictransienttransition{#1}{-1}}
-\newcommand{       \brickpclktolow}[1]{\brickgenerictransienttransition{#1}{-1}}
-\newcommand{  \brickpclkarrowtolow}[1]{\brickgenerictransienttransition{#1}{-1}}
-\newcommand{     \brickclklowtolow}[1]{\brickgenerictransienttransition{#1}{-1}}
-\newcommand{\brickclklowarrowtolow}[1]{\brickgenerictransienttransition{#1}{-1}}
-
-% Slow, curved transitions
-\newcommand{        \brickhightoz}[1]{\brickgenericslowtransition{#1}{ 1}{ 0}{}}
-\newcommand{        \bricknclktoz}[1]{\brickgenericslowtransition{#1}{ 1}{ 0}{}}
-\newcommand{   \bricknclkarrowtoz}[1]{\brickgenericslowtransition{#1}{ 1}{ 0}{}}
-\newcommand{     \brickclkhightoz}[1]{\brickgenericslowtransition{#1}{ 1}{ 0}{}}
-\newcommand{\brickclkhigharrowtoz}[1]{\brickgenericslowtransition{#1}{ 1}{ 0}{}}
-\newcommand{      \brickpulluptoz}[1]{\brickgenericslowtransition{#1}{ 1}{ 0}{}}
-
-\newcommand{        \bricklowtoz}[1]{\brickgenericslowtransition{#1}{-1}{ 0}{}}
-\newcommand{       \brickpclktoz}[1]{\brickgenericslowtransition{#1}{-1}{ 0}{}}
-\newcommand{  \brickpclkarrowtoz}[1]{\brickgenericslowtransition{#1}{-1}{ 0}{}}
-\newcommand{     \brickclklowtoz}[1]{\brickgenericslowtransition{#1}{-1}{ 0}{}}
-\newcommand{\brickclklowarrowtoz}[1]{\brickgenericslowtransition{#1}{-1}{ 0}{}}
-\newcommand{   \brickpulldowntoz}[1]{\brickgenericslowtransition{#1}{-1}{ 0}{}}
-
-\newcommand{        \bricklowtopullup}[1]{\brickgenericslowtransition{#1}{-1}{ 1}{wave pulled}}
-\newcommand{       \brickpclktopullup}[1]{\brickgenericslowtransition{#1}{-1}{ 1}{wave pulled}}
-\newcommand{  \brickpclkarrowtopullup}[1]{\brickgenericslowtransition{#1}{-1}{ 1}{wave pulled}}
-\newcommand{     \brickclklowtopullup}[1]{\brickgenericslowtransition{#1}{-1}{ 1}{wave pulled}}
-\newcommand{\brickclklowarrowtopullup}[1]{\brickgenericslowtransition{#1}{-1}{ 1}{wave pulled}}
-\newcommand{   \brickpulldowntopullup}[1]{\brickgenericslowtransition{#1}{-1}{ 1}{wave pulled}}
-
-\newcommand{        \brickhightopulldown}[1]{\brickgenericslowtransition{#1}{ 1}{-1}{wave pulled}}
-\newcommand{        \bricknclktopulldown}[1]{\brickgenericslowtransition{#1}{ 1}{-1}{wave pulled}}
-\newcommand{   \bricknclkarrowtopulldown}[1]{\brickgenericslowtransition{#1}{ 1}{-1}{wave pulled}}
-\newcommand{     \brickclkhightopulldown}[1]{\brickgenericslowtransition{#1}{ 1}{-1}{wave pulled}}
-\newcommand{\brickclkhigharrowtopulldown}[1]{\brickgenericslowtransition{#1}{ 1}{-1}{wave pulled}}
-\newcommand{      \brickpulluptopulldown}[1]{\brickgenericslowtransition{#1}{ 1}{-1}{wave pulled}}
-
-\newcommand{  \brickztopullup}[1]{\brickgenericslowtransition{#1}{ 0}{ 1}{wave pulled}}
-\newcommand{\brickztopulldown}[1]{\brickgenericslowtransition{#1}{ 0}{-1}{wave pulled}}
-
-% Bus transitions
-\newcommand{      \brickbustox}[1]{\brickgenericbustransition{#1}{wave bus}{      wave x}}
-\newcommand{\brickbusyellowtox}[1]{\brickgenericbustransition{#1}{wave busyellow}{wave x}}
-\newcommand{\brickbusorangetox}[1]{\brickgenericbustransition{#1}{wave busorange}{wave x}}
-\newcommand{  \brickbusbluetox}[1]{\brickgenericbustransition{#1}{wave busblue}{  wave x}}
-
-\newcommand{        \brickxtobus}[1]{\brickgenericbustransition{#1}{wave x}{        wave bus}}
-\newcommand{      \brickbustobus}[1]{\brickgenericbustransition{#1}{wave bus}{      wave bus}}
-\newcommand{\brickbusyellowtobus}[1]{\brickgenericbustransition{#1}{wave busyellow}{wave bus}}
-\newcommand{\brickbusorangetobus}[1]{\brickgenericbustransition{#1}{wave busorange}{wave bus}}
-\newcommand{  \brickbusbluetobus}[1]{\brickgenericbustransition{#1}{wave busblue}{  wave bus}}
-
-\newcommand{        \brickxtobusyellow}[1]{\brickgenericbustransition{#1}{wave x}{        wave busyellow}}
-\newcommand{      \brickbustobusyellow}[1]{\brickgenericbustransition{#1}{wave bus}{      wave busyellow}}
-\newcommand{\brickbusyellowtobusyellow}[1]{\brickgenericbustransition{#1}{wave busyellow}{wave busyellow}}
-\newcommand{\brickbusorangetobusyellow}[1]{\brickgenericbustransition{#1}{wave busorange}{wave busyellow}}
-\newcommand{  \brickbusbluetobusyellow}[1]{\brickgenericbustransition{#1}{wave busblue}{  wave busyellow}}
-
-\newcommand{        \brickxtobusorange}[1]{\brickgenericbustransition{#1}{wave x}{        wave busorange}}
-\newcommand{      \brickbustobusorange}[1]{\brickgenericbustransition{#1}{wave bus}{      wave busorange}}
-\newcommand{\brickbusyellowtobusorange}[1]{\brickgenericbustransition{#1}{wave busyellow}{wave busorange}}
-\newcommand{\brickbusorangetobusorange}[1]{\brickgenericbustransition{#1}{wave busorange}{wave busorange}}
-\newcommand{  \brickbusbluetobusorange}[1]{\brickgenericbustransition{#1}{wave busblue}{  wave busorange}}
-
-\newcommand{        \brickxtobusblue}[1]{\brickgenericbustransition{#1}{wave x}{        wave busblue}}
-\newcommand{      \brickbustobusblue}[1]{\brickgenericbustransition{#1}{wave bus}{      wave busblue}}
-\newcommand{\brickbusyellowtobusblue}[1]{\brickgenericbustransition{#1}{wave busyellow}{wave busblue}}
-\newcommand{\brickbusorangetobusblue}[1]{\brickgenericbustransition{#1}{wave busorange}{wave busblue}}
-\newcommand{  \brickbusbluetobusblue}[1]{\brickgenericbustransition{#1}{wave busblue}{  wave busblue}}
-
-% Soft transitions into busses
-\newcommand{        \bricklowtox}[1]{\brickgenericbusintransition{#1}{-1.0}{wave x}}
-\newcommand{      \bricklowtobus}[1]{\brickgenericbusintransition{#1}{-1.0}{wave bus}}
-\newcommand{\bricklowtobusyellow}[1]{\brickgenericbusintransition{#1}{-1.0}{wave busyellow}}
-\newcommand{\bricklowtobusorange}[1]{\brickgenericbusintransition{#1}{-1.0}{wave busorange}}
-\newcommand{  \bricklowtobusblue}[1]{\brickgenericbusintransition{#1}{-1.0}{wave busblue}}
-
-\newcommand{        \brickpclktox}[1]{\brickgenericbusintransition{#1}{-1.0}{wave x}}
-\newcommand{      \brickpclktobus}[1]{\brickgenericbusintransition{#1}{-1.0}{wave bus}}
-\newcommand{\brickpclktobusyellow}[1]{\brickgenericbusintransition{#1}{-1.0}{wave busyellow}}
-\newcommand{\brickpclktobusorange}[1]{\brickgenericbusintransition{#1}{-1.0}{wave busorange}}
-\newcommand{  \brickpclktobusblue}[1]{\brickgenericbusintransition{#1}{-1.0}{wave busblue}}
-
-\newcommand{        \brickpclkarrowtox}[1]{\brickgenericbusintransition{#1}{-1.0}{wave x}}
-\newcommand{      \brickpclkarrowtobus}[1]{\brickgenericbusintransition{#1}{-1.0}{wave bus}}
-\newcommand{\brickpclkarrowtobusyellow}[1]{\brickgenericbusintransition{#1}{-1.0}{wave busyellow}}
-\newcommand{\brickpclkarrowtobusorange}[1]{\brickgenericbusintransition{#1}{-1.0}{wave busorange}}
-\newcommand{  \brickpclkarrowtobusblue}[1]{\brickgenericbusintransition{#1}{-1.0}{wave busblue}}
-
-\newcommand{        \brickclklowtox}[1]{\brickgenericbusintransition{#1}{-1.0}{wave x}}
-\newcommand{      \brickclklowtobus}[1]{\brickgenericbusintransition{#1}{-1.0}{wave bus}}
-\newcommand{\brickclklowtobusyellow}[1]{\brickgenericbusintransition{#1}{-1.0}{wave busyellow}}
-\newcommand{\brickclklowtobusorange}[1]{\brickgenericbusintransition{#1}{-1.0}{wave busorange}}
-\newcommand{  \brickclklowtobusblue}[1]{\brickgenericbusintransition{#1}{-1.0}{wave busblue}}
-
-\newcommand{        \brickclklowarrowtox}[1]{\brickgenericbusintransition{#1}{-1.0}{wave x}}
-\newcommand{      \brickclklowarrowtobus}[1]{\brickgenericbusintransition{#1}{-1.0}{wave bus}}
-\newcommand{\brickclklowarrowtobusyellow}[1]{\brickgenericbusintransition{#1}{-1.0}{wave busyellow}}
-\newcommand{\brickclklowarrowtobusorange}[1]{\brickgenericbusintransition{#1}{-1.0}{wave busorange}}
-\newcommand{  \brickclklowarrowtobusblue}[1]{\brickgenericbusintransition{#1}{-1.0}{wave busblue}}
-
-\newcommand{        \brickhightox}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave x}}
-\newcommand{      \brickhightobus}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave bus}}
-\newcommand{\brickhightobusyellow}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave busyellow}}
-\newcommand{\brickhightobusorange}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave busorange}}
-\newcommand{  \brickhightobusblue}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave busblue}}
-
-\newcommand{        \bricknclktox}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave x}}
-\newcommand{      \bricknclktobus}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave bus}}
-\newcommand{\bricknclktobusyellow}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave busyellow}}
-\newcommand{\bricknclktobusorange}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave busorange}}
-\newcommand{  \bricknclktobusblue}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave busblue}}
-
-\newcommand{        \bricknclkarrowtox}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave x}}
-\newcommand{      \bricknclkarrowtobus}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave bus}}
-\newcommand{\bricknclkarrowtobusyellow}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave busyellow}}
-\newcommand{\bricknclkarrowtobusorange}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave busorange}}
-\newcommand{  \bricknclkarrowtobusblue}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave busblue}}
-
-\newcommand{        \brickclkhightox}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave x}}
-\newcommand{      \brickclkhightobus}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave bus}}
-\newcommand{\brickclkhightobusyellow}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave busyellow}}
-\newcommand{\brickclkhightobusorange}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave busorange}}
-\newcommand{  \brickclkhightobusblue}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave busblue}}
-
-\newcommand{        \brickclkhigharrowtox}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave x}}
-\newcommand{      \brickclkhigharrowtobus}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave bus}}
-\newcommand{\brickclkhigharrowtobusyellow}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave busyellow}}
-\newcommand{\brickclkhigharrowtobusorange}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave busorange}}
-\newcommand{  \brickclkhigharrowtobusblue}[1]{\brickgenericbusintransition{#1}{ 1.0}{wave busblue}}
-
-
-
 """
 
-# Mapping from wave values to tikz brick names
-TIKZ_SIG_NAMES = {
-	"x": "x",
-	"z": "z",
-	"0": "low",
-	"1": "high",
-	"2": "bus",
-	"=": "bus",
-	"3": "busyellow",
-	"4": "busorange",
-	"5": "busblue",
-	"p": "pclk",
-	"P": "pclkarrow",
-	"n": "nclk",
-	"N": "nclkarrow",
-	"l": "clklow",
-	"L": "clklowarrow",
-	"h": "clkhigh",
-	"H": "clkhigharrow",
-	"u": "pullup",
-	"d": "pulldown",
+WaveSection = namedtuple("WaveSection"
+                        , [ "wave_type" # Either "bus", "bit"
+                          , "glitch" # Glitch on continuations of same signal
+                          , "bus_style" # TikZ styling for bus fill
+                          , "bit_style" # TikZ styling for bit lines
+                          , "bit_start_position" # Starting y-offset of bit waves
+                          , "bit_end_position" # Ending y-offset of bit waves
+                          , "bit_transition" # Either "sharp", "sharparrow", "smooth" or "curved"
+                          ]
+                        )
+
+# Dictionary containing various WaveSection definitions for different types of
+# waveform.
+WAVES = {}
+
+# High impedance
+WAVES["z"] = WaveSection( wave_type          = "bit"
+                        , glitch             = False
+                        , bus_style          = None
+                        , bit_style          = ""
+                        , bit_start_position = 0.5
+                        , bit_end_position   = 0.5
+                        , bit_transition     = "curved"
+                        )
+
+# Logic levels
+WAVES["logic"] = {}
+for level in [0, 1]:
+	WAVES["logic"][level] = WaveSection( wave_type          = "bit"
+	                                   , glitch             = True
+	                                   , bus_style          = None
+	                                   , bit_style          = ""
+	                                   , bit_start_position = level
+	                                   , bit_end_position   = level
+	                                   , bit_transition     = "smooth"
+	                                   )
+
+# Pulled-Logic levels
+WAVES["pulled"] = {}
+for level in [0, 1]:
+	WAVES["pulled"][level] = WaveSection( wave_type          = "bit"
+	                                    , glitch             = True
+	                                    , bus_style          = None
+	                                    , bit_style          = "wave pulled"
+	                                    , bit_start_position = level
+	                                    , bit_end_position   = level
+	                                    , bit_transition     = "curved"
+	                                    )
+
+# Clock signals
+WAVES["clk"] = {}
+for clk_edge, first, second in [ (0, 0,0), (1, 1,1)
+                               , ("posedge", 1,0), ("negedge", 0,1)
+                               ]:
+	WAVES["clk"][clk_edge] = {}
+	for has_arrow in [False, True]:
+		WAVES["clk"][clk_edge][has_arrow] \
+			= WaveSection( wave_type          = "bit"
+			             , glitch             = True
+			             , bus_style          = None
+			             , bit_style          = ""
+			             , bit_start_position = first
+			             , bit_end_position   = second
+			             , bit_transition     = "sharparrow" if has_arrow else "sharp"
+			             )
+
+# Buses
+WAVES["bus"] = {}
+for name, style, glitch in [ ("x",      "wave x",         False)
+                           , ("bus",    "wave bus",       True)
+                           , ("yellow", "wave busyellow", True)
+                           , ("orange", "wave busorange", True)
+                           , ("blue",   "wave busblue",   True)
+                           ]:
+	WAVES["bus"][name] = WaveSection( wave_type          = "bus"
+	                                , glitch             = glitch
+	                                , bus_style          = style
+	                                , bit_style          = None
+	                                , bit_start_position = None
+	                                , bit_end_position   = None
+	                                , bit_transition     = "smooth"
+	                                )
+
+
+def get_brick(wave, odd_brick, brick_width):
+	"""
+	Return a LaTeX string which inserts a brick of the type indicated by wave.
+	"""
+	
+	if wave.wave_type == "bus":
+		# Just a bus of the given style
+		return r"\brickbus{%f}{%s}"%(brick_width, wave.bus_style)
+	elif wave.wave_type == "bit":
+		# A bus with a given style.
+		return r"\brickbit{%f}{%s}{%f}{%f}{%d}"%(
+			brick_width,
+			wave.bit_style,
+			# Swap stard and end positions between odd and even bricks for clock
+			# signals.
+			wave.bit_end_position   if odd_brick else wave.bit_start_position,
+			wave.bit_start_position if odd_brick else wave.bit_end_position,
+			( # Add an arrow to clock signals...
+			  wave.bit_start_position != wave.bit_end_position
+			  # ...on the leading edge...
+			  and not odd_brick
+			  # ...when an arrow is required.
+			  and wave.bit_transition == "sharparrow"
+			)
+		)
+
+
+def get_transition_brick(last_wave, wave, brick_width):
+	"""
+	Return a LaTeX string which inserts a transition brick from last_wave to wave.
+	"""
+	
+	if last_wave.wave_type == wave.wave_type == "bus":
+		# Bus-to-bus
+		if last_wave.glitch or last_wave.bus_style != wave.bus_style:
+			# A gitch or a change
+			return r"\brickbustobus{%f}{%s}{%s}"%( brick_width
+			                                     , last_wave.bus_style
+			                                     , wave.bus_style
+			                                     )
+		else:
+			# Bus is just a continuation of the last one
+			return get_brick(wave, False, brick_width)
+	elif last_wave.wave_type == wave.wave_type == "bit":
+		# Bit-to-bit transition
+		if last_wave.glitch and last_wave.bit_end_position == wave.bit_start_position:
+			# A glitch
+			if wave.bit_transition in ("sharp", "sharparrow"):
+				# Sharp glitch, possibly with arrow
+				return r"\bricksharptobit{%f}{%s}{%s}{%d}"%(
+					brick_width,
+					wave.bit_style,
+					wave.bit_start_position,
+					wave.bit_transition == "sharparrow",
+				)
+			else:
+				# All other glitches
+				return r"\brickbitglitch{%f}{%s}{%s}"%( brick_width
+				                                      , wave.bit_style
+				                                      , wave.bit_start_position
+				                                      )
+		elif last_wave.bit_end_position == wave.bit_start_position:
+			# Same-level, no transition to make
+			return get_brick(wave, False, brick_width)
+		else:
+			# Level changed
+			if wave.bit_transition in ("sharp", "sharparrow"):
+				# Sharp transition, possibly with arrow
+				return r"\bricksharptobit{%f}{%s}{%f}{%d}"%(
+					brick_width,
+					wave.bit_style,
+					wave.bit_start_position,
+					wave.bit_transition == "sharparrow"
+				)
+			elif wave.bit_transition == "smooth":
+				# Smooth transition
+				return r"\bricksmoothbittobit{%f}{%s}{%s}{%f}{%f}"%(
+					brick_width,
+					last_wave.bit_style,
+					wave.bit_style,
+					last_wave.bit_end_position,
+					wave.bit_start_position,
+				)
+			elif wave.bit_transition == "curved":
+				# Curved transition
+				return r"\brickcurvedbittobit{%f}{%s}{%s}{%f}{%f}"%(
+					brick_width,
+					last_wave.bit_style,
+					wave.bit_style,
+					last_wave.bit_end_position,
+					wave.bit_start_position,
+				)
+			else:
+				assert False, "Unknown bit_transition: %s"%(wave.bit_transition)
+	elif last_wave.wave_type == "bit" and wave.wave_type == "bus":
+		# Bit-to-bus transition
+		return r"\bricksmoothbittobus{%f}{%s}{%s}{%f}"%(
+			brick_width,
+			last_wave.bit_style,
+			wave.bus_style,
+			last_wave.bit_end_position,
+		)
+	elif last_wave.wave_type == "bus" and wave.wave_type == "bit":
+		# Bus-to-bit transition
+		if wave.bit_transition in ("sharp", "sharparrow"):
+			# Sharp transition, possibly with arrow
+			return r"\bricksharptobit{%f}{%s}{%f}{%d}"%(
+				brick_width,
+				wave.bit_style,
+				wave.bit_start_position,
+				wave.bit_transition == "sharparrow"
+			)
+		elif wave.bit_transition == "smooth":
+			# Smooth transition
+			return r"\bricksmoothbustobit{%f}{%s}{%s}{%f}"%(
+				brick_width,
+				last_wave.bus_style,
+				wave.bit_style,
+				wave.bit_start_position,
+			)
+		elif wave.bit_transition == "curved":
+			# Curved transition
+			return r"\brickcurvedbustobit{%f}{%s}{%s}{%f}"%(
+				brick_width,
+				last_wave.bus_style,
+				wave.bit_style,
+				wave.bit_start_position,
+			)
+		else:
+			assert False, "Unknown bit_transition: %s"%(wave.bit_transition)
+	else:
+		assert False, "Unknown wave types: %s and %s"%(last_wave.wave_type, wave.wave_type)
+
+
+# Mapping from WaveDrom values to WaveSections
+WAVEDROM_NAMES = {
+	"z": WAVES["z"],
+	"0": WAVES["logic"][0],
+	"1": WAVES["logic"][1],
+	"d": WAVES["pulled"][0],
+	"u": WAVES["pulled"][1],
+	"x": WAVES["bus"]["x"],
+	"2": WAVES["bus"]["bus"],
+	"=": WAVES["bus"]["bus"],
+	"3": WAVES["bus"]["yellow"],
+	"4": WAVES["bus"]["orange"],
+	"5": WAVES["bus"]["blue"],
+	"p": WAVES["clk"]["posedge"][False],
+	"P": WAVES["clk"]["posedge"][True],
+	"n": WAVES["clk"]["negedge"][False],
+	"N": WAVES["clk"]["negedge"][True],
+	"l": WAVES["clk"][0][False],
+	"L": WAVES["clk"][0][True],
+	"h": WAVES["clk"][1][False],
+	"H": WAVES["clk"][1][True],
 }
-
-
-# A list of tikz signal name pairs for which custom transitions exist
-HAS_TRANSITION = set(re.findall( r"\\brick([a-z]+)?to([a-z]+)"
-                               , TIKZ_HEADER
-                               , re.I
-                               )
-                    )
 
 
 def render_waveform(signal_params):
@@ -481,70 +565,62 @@ def render_waveform(signal_params):
 	Produce TikZ for just the waveform of a given signal.
 	"""
 	wave   = signal_params["wave"]
+	node   = signal_params.get("node", [])
 	phase  = signal_params.get("phase", 0.0)
 	period = signal_params.get("period", 1.0)
 	
-	assert phase  >= 0.0, "Phase must be positive or zero."
 	assert period >= 0.0, "Period must be positive or zero."
 	
+	# Pad node list
+	node += "." * max(0, len(wave)-len(node))
+	
+	# Set up the 'last brick' pointer at the start of the waveform.
 	out = [r"\coordinate (last brick) at (wave start);"]
-	out.append(r"\begin{scope}[line cap=rect, line join=round];")
 	
 	# Start assuming the signal is x if not otherwise specified
 	last_signal = "x" if wave[0] == "." else wave[0]
 	
-	def get_brick(signal, odd_even):
-		return(r"\brick%s{%d}{%f}"%(
-		        TIKZ_SIG_NAMES[signal],
-		        odd_even,
-		        period,
-		      ))
-	
-	def get_transition_brick(last_signal, signal):
-		if ("", TIKZ_SIG_NAMES[signal]) in HAS_TRANSITION:
-			# Use A custom universal transition brick
-			return(r"\brickto%s{%f}"%(
-			        TIKZ_SIG_NAMES[signal],
-			        period,
-			      ))
-		if (TIKZ_SIG_NAMES[last_signal], TIKZ_SIG_NAMES[signal]) in HAS_TRANSITION:
-			# Use A custom transition brick
-			return(r"\brick%sto%s{%f}"%(
-			        TIKZ_SIG_NAMES[last_signal],
-			        TIKZ_SIG_NAMES[signal],
-			        period,
-			      ))
-		else:
-			# No specific transition, just abutt the two bricks
-			return(r"\brick%s{0}{%f}"%(
-			        TIKZ_SIG_NAMES[signal],
-			        period,
-			      ))
-	
 	# Draw the first part of the waveform to get the phase right
-	if phase != 0.0:
-		if (phase*2)%1.0 != 0.0:
-			out.append(r"\truncatebrick{%f}{%f}{%s}"%(
-			            period,
-			            1.0-(phase*2)%1.0,
-			            get_brick(last_signal, int(phase*2.0+1)%2)
-			          ))
-		for i in range(int(phase*2)):
-			out.append(get_brick(last_signal, (int(phase*2.0) - i)%2))
+	if phase < 0.0:
+		# -ve phase advances the waveform rightward
+		out.append(r"\advancebrick{%f}"%(-phase*2.0))
+	elif phase > 0.0:
+		# Skip all values which will be completely truncated
+		skip = int(ceil(phase/period))
+		
+		# Work out the wave being shown in the last part of the waveform which is
+		# truncated
+		skipped_wave = wave[:skip].rstrip(".")
+		last_signal = skipped_wave[-1] if skipped_wave else "x"
+		
+		wave = wave[skip:]
+		node = node[skip:]
+		
+		phase -= (skip-1)*period
+		
+		# Produce the first pair of bricks
+		out.append(r"\truncatebrick{%f}{%f}{%s%s}{2}"%(
+			period,
+			phase*2.0,
+			get_brick(WAVEDROM_NAMES[last_signal], False, period),
+			get_brick(WAVEDROM_NAMES[last_signal], True, period),
+		))
 	
 	# Draw the waveform, one timeslot at a time
-	for time, signal in enumerate(wave):
+	for time, (signal, node_name) in enumerate(zip(wave, node)):
 		continued_signal = last_signal if signal == "." else signal
-		if time == 0 or signal == ".":
-			out.append(get_brick(continued_signal, 0))
+		if (time == 0 and phase <= 0.0) or signal == ".":
+			out.append(get_brick(WAVEDROM_NAMES[continued_signal], 0, period))
 		else:
-			out.append(get_transition_brick(last_signal, continued_signal))
+			out.append(get_transition_brick( WAVEDROM_NAMES[last_signal]
+			                               , WAVEDROM_NAMES[continued_signal]
+			                               , period
+			                               ))
 		
-		out.append(get_brick(continued_signal, 1))
+		out.append(get_brick(WAVEDROM_NAMES[continued_signal], 1, period))
 		
 		last_signal = continued_signal
 	
-	out.append(r"\end{scope};")
 	return "\n".join(out)
 
 
@@ -566,7 +642,7 @@ def render_signal(signal_params, tikz_position="(0,0)"):
 
 def render_wavedrom(wavedrom):
 	return r"""
-		\begin{tikzpicture}
+		\begin{tikzpicture}[line cap=rect, line join=round]
 			%s
 			%s
 		\end{tikzpicture}
@@ -575,8 +651,8 @@ def render_wavedrom(wavedrom):
 
 if __name__=="__main__":
 	print(render_wavedrom( { "name": "test"
-	                       , "wave": "0x0=030405"
-	                       , "phase": 0.0
+	                       , "wave": "44"
+	                       , "phase": 0.2
 	                       , "period": 1.0
 	                       }
 	                     )
