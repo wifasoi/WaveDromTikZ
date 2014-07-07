@@ -44,18 +44,42 @@ TIKZ_HEADER = r"""
 	\coordinate (last brick) at ([shift={(#1*\wavewidth,0)}]last brick);
 }
 
-% Draw a truncated brick.
+% Define a clip which will truncate a waveform at the left-hand side
 %  #1: Width of a brick
-%  #2: Truncation offset (positive to truncate the front, negative off the back)
-%  #3: The brick
-%  #4: The number of bricks
-\newcommand{\truncatebrick}[4]{
-	\begin{scope}
-		\coordinate (last brick) at ([shift={(-#2*\wavewidth,0)}]last brick);
-		\clip ([shift={(#2*\wavewidth, 0.6*\waveheight)}]last brick)
-		      rectangle ++(#4*#1*\wavewidth-#2*\wavewidth,-1.2*\waveheight);
-		#3
-	\end{scope}
+%  #2: Truncation offset (in bricks)
+%  #3: Number of bricks in waveform
+\newcommand{\truncatewaveform}[3]{
+	\coordinate (last brick) at ([shift={(-#2*\wavewidth,0)}]last brick);
+	\clip ([shift={(#2*\wavewidth, 0.6*\waveheight)}]last brick)
+	      rectangle ++(#3*#1*\wavewidth-#2*\wavewidth,-1.2*\waveheight);
+}
+
+% Spacer Brick Overlay
+%  #1: brick width
+\newcommand{\brickspaceroverly}[1]{
+	\pgfmathsetlengthmacro{\spacerheight}{1.2*\waveheight}
+	\pgfmathsetlengthmacro{\spacerwidth}{\transitionwidth}
+	\pgfmathsetlengthmacro{\spacergap}{0.7*\transitionwidth}
+	
+	% Mask off the waveform
+	\fill [fill=white]
+	      ([xshift=-#1*\wavewidth-0.5*\spacergap-0.5*\spacerwidth, yshift=-0.5*\spacerheight]last brick)
+	   .. controls +(0.8*\spacergap, 0) and +(-0.8*\spacergap, 0)
+	   .. ++(\spacerwidth, \spacerheight)
+	   -- ++(\spacergap,0)
+	   .. controls +(-0.8*\spacergap, 0) and +(0.8*\spacergap, 0)
+	   .. ++(-\spacerwidth, -\spacerheight)
+	    ;
+	
+	% Lines
+	\draw ([xshift=-#1*\wavewidth-0.5*\spacergap-0.5*\spacerwidth, yshift=-0.5*\spacerheight]last brick)
+	   .. controls +(0.8*\spacergap, 0) and +(-0.8*\spacergap, 0)
+	   .. ++(\spacerwidth, \spacerheight)
+	      ++(\spacergap,0)
+	   .. controls +(-0.8*\spacergap, 0) and +(0.8*\spacergap, 0)
+	   .. ++(-\spacerwidth, -\spacerheight)
+	    ;
+	
 }
 
 % Generic mid-bus brick
@@ -566,6 +590,7 @@ def render_waveform(signal_params):
 	"""
 	wave   = signal_params["wave"]
 	node   = signal_params.get("node", [])
+	data   = signal_params.get("data", [])
 	phase  = signal_params.get("phase", 0.0)
 	period = signal_params.get("period", 1.0)
 	
@@ -574,8 +599,15 @@ def render_waveform(signal_params):
 	# Pad node list
 	node += "." * max(0, len(wave)-len(node))
 	
+	# Split up data in strings
+	if type(data) is str:
+		data = data.split(" ")
+	
 	# Set up the 'last brick' pointer at the start of the waveform.
 	out = [r"\coordinate (last brick) at (wave start);"]
+	
+	# Put the waveform in a scope to allow clipping
+	out.append(r"\begin{scope}")
 	
 	# Start assuming the signal is x if not otherwise specified
 	last_signal = "x" if wave[0] == "." else wave[0]
@@ -584,32 +616,15 @@ def render_waveform(signal_params):
 	if phase < 0.0:
 		# -ve phase advances the waveform rightward
 		out.append(r"\advancebrick{%f}"%(-phase*2.0))
-	elif phase > 0.0:
-		# Skip all values which will be completely truncated
-		skip = int(ceil(phase/period))
-		
-		# Work out the wave being shown in the last part of the waveform which is
-		# truncated
-		skipped_wave = wave[:skip].rstrip(".")
-		last_signal = skipped_wave[-1] if skipped_wave else "x"
-		
-		wave = wave[skip:]
-		node = node[skip:]
-		
-		phase -= (skip-1)*period
-		
-		# Produce the first pair of bricks
-		out.append(r"\truncatebrick{%f}{%f}{%s%s}{2}"%(
-			period,
-			phase*2.0,
-			get_brick(WAVEDROM_NAMES[last_signal], False, period),
-			get_brick(WAVEDROM_NAMES[last_signal], True, period),
-		))
+	if phase > 0.0:
+		# +ve phase advances the waveform leftward
+		out.append(r"\truncatewaveform{%f}{%f}{%d}"%(period,phase*2.0,len(wave)*2))
 	
 	# Draw the waveform, one timeslot at a time
 	for time, (signal, node_name) in enumerate(zip(wave, node)):
-		continued_signal = last_signal if signal == "." else signal
-		if (time == 0 and phase <= 0.0) or signal == ".":
+		continued_signal = last_signal if signal in ".|" else signal
+		# First half of the waveform/transition
+		if time == 0 or signal in ".|":
 			out.append(get_brick(WAVEDROM_NAMES[continued_signal], 0, period))
 		else:
 			out.append(get_transition_brick( WAVEDROM_NAMES[last_signal]
@@ -617,10 +632,16 @@ def render_waveform(signal_params):
 			                               , period
 			                               ))
 		
+		# Second half of the waveform
 		out.append(get_brick(WAVEDROM_NAMES[continued_signal], 1, period))
+		
+		# Draw the spacer spacer
+		if signal == "|":
+			out.append(r"\brickspaceroverly{%f}"%(period))
 		
 		last_signal = continued_signal
 	
+	out.append(r"\end{scope}")
 	return "\n".join(out)
 
 
@@ -651,8 +672,8 @@ def render_wavedrom(wavedrom):
 
 if __name__=="__main__":
 	print(render_wavedrom( { "name": "test"
-	                       , "wave": "44"
-	                       , "phase": 0.2
+	                       , "wave": "P|."
+	                       , "phase": 0.0
 	                       , "period": 1.0
 	                       }
 	                     )
