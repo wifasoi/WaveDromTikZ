@@ -32,6 +32,9 @@ TIKZ_HEADER = r"""
 \tikzset{wave busblue/.style={fill=blue!25!white}}
 \tikzset{wave pulled/.style={dotted}}
 
+% Initialise pointer
+\coordinate (last waveform);
+
 % Label for a signal. Arguments:
 %  #1: The human-readable label string
 \newcommand{\signallabel}[1]{
@@ -789,28 +792,26 @@ def render_help_lines(wavedrom):
 
 
 def render_wavedrom(wavedrom):
-	return r"""
-		\begin{tikzpicture}
-			%s
-			\coordinate (last waveform);
-			%s
-			%s
-		\end{tikzpicture}
-	"""%( TIKZ_HEADER
-	    , render_help_lines(wavedrom)
-	    , "\n".join( render_signal(signal_params)
-	                 for signal_params in wavedrom["signal"]
-	               )
-	    )
+	return r"%s%s%s"%( TIKZ_HEADER
+	                 , render_help_lines(wavedrom)
+	                 , "\n".join( render_signal(signal_params)
+	                              for signal_params in wavedrom["signal"]
+	                            )
+	                 )
 
 
 if __name__=="__main__":
-	print(render_wavedrom(yaml.load(r"""
-{ signal: [
-  { name: "clk",         wave: "p.....|..." },
-  { name: "Data",        wave: "x.345x|=.x", data: ["head", "body", "tail", "data"] },
-  { name: "Request",     wave: "0.1..0|1.0" },
-  {},
-  { name: "Acknowledge", wave: "1.....|01." }
-]}
-	""".strip())))
+	import sys
+	mode = sys.argv[1] if len(sys.argv) >= 2 else ""
+	if mode == "header":
+		print(TIKZ_HEADER)
+	elif mode == "signal":
+		print(render_signal(yaml.load(" ".join(sys.argv[2:]))))
+	elif mode == "wavedrom":
+		print(render_wavedrom(yaml.load(open(sys.argv[2], "r").read())))
+	else:
+		sys.stderr.write("Usage: %s {header | signal [signal-description] | wavedrom [filename]}\n"%(
+			sys.argv[0]
+			
+		))
+		sys.exit(-1)
