@@ -44,6 +44,18 @@ TIKZ_HEADER = r"""
 	\coordinate (last brick) at ([shift={(#1*\wavewidth,0)}]last brick);
 }
 
+% Add the label for a bus
+%  #1: Label coordinate
+%  #2: Label text
+\newcommand{\busdata}[2]{
+	\node [ inner sep=0
+	      , minimum height=\waveheight
+	      , anchor=mid
+	      ]
+	      at ([shift={(0.5*\transitionwidth,0)}]#1)
+	      {#2};
+}
+
 % Define a clip which will truncate a waveform at the left-hand side
 %  #1: Width of a brick
 %  #2: Truncation offset (in bricks)
@@ -620,8 +632,27 @@ def render_waveform(signal_params):
 		# +ve phase advances the waveform leftward
 		out.append(r"\truncatewaveform{%f}{%f}{%d}"%(period,phase*2.0,len(wave)*2))
 	
+	# Has the start of a bus been observed?
+	bus_started = False
+	bus_number  = 0
+	
 	# Draw the waveform, one timeslot at a time
 	for time, (signal, node_name) in enumerate(zip(wave, node)):
+		# Add coordinates for bus labels
+		if signal not in '.|' and bus_started:
+			out.append(r"\coordinate (bus %d) at ($(bus start)!0.5!(last brick)$);"%(
+				bus_number
+			))
+			bus_number += 1
+			bus_started = False
+		
+		# Update a pointer to the start of every bus
+		if signal in '=2345':
+			# Add the label for the last bus
+			
+			out.append(r"\coordinate (bus start) at (last brick);")
+			bus_started = True
+		
 		continued_signal = last_signal if signal in ".|" else signal
 		# First half of the waveform/transition
 		if time == 0 or signal in ".|":
@@ -640,6 +671,18 @@ def render_waveform(signal_params):
 			out.append(r"\brickspaceroverly{%f}"%(period))
 		
 		last_signal = continued_signal
+	
+	# Add final bus label
+	if bus_started:
+		out.append(r"\coordinate (bus %d) at ($(bus start)!0.5!(last brick)$);"%(
+			bus_number
+		))
+		bus_number += 1
+		bus_started = False
+	
+	# Add bus labels
+	for i, datum in zip(range(bus_number), data):
+		out.append(r"\busdata{bus %d}{%s};"%(i, datum))
 	
 	out.append(r"\end{scope}")
 	return "\n".join(out)
@@ -672,9 +715,10 @@ def render_wavedrom(wavedrom):
 
 if __name__=="__main__":
 	print(render_wavedrom( { "name": "test"
-	                       , "wave": "P|."
+	                       , "wave": "=.=.=.=."
 	                       , "phase": 0.0
 	                       , "period": 1.0
+	                       , "data": "eqs two"
 	                       }
 	                     )
 	     )
