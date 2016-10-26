@@ -43,3 +43,10 @@ Producing:
 For comparison, the original WaveDrom image:
 
 ![Regular WaveDrom example waveform](http://jhnet.co.uk/misc/waveDrom.png)
+
+
+### More Examples
+
+Make the example pdf file from project root using
+
+    ./make.sh
