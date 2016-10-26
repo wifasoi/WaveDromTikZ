@@ -1,0 +1,66 @@
+% First we choose the document class (can be book, report, article etc.)
+\documentclass{article}
+\usepackage{tikz}
+\usepackage{ifthen}
+\usepackage{listings}
+
+\usetikzlibrary{ calc, positioning, decorations.markings, patterns}
+
+\begin{document}
+
+\section{Hitchhiker's Guide to the WaveDromTikz}
+
+\subsection{Step 1. The Signal}
+
+Lets start with a quick example. Following code will create 1-bit signal named "Alfa" that changes its state over time.
+\lstinputlisting{examples/the_signal.drom}
+Every character in the "wave" string represents a single time period. Symbol "." extends previous state for one more period. Here is how it looks: 
+
+\begin{tikzpicture}[thick]
+    \input{|"./wavedromtikz.py wavedrom examples/the_signal.drom"}
+\end{tikzpicture}
+
+\subsection{Step 2. Adding Clock}
+
+Digital clock is a special type of signal. It changes twice per time period and can have positive or negative polarity. It also can have an optional marker on the working edge. The clock's blocks can be mixed with other signal states to create the clock gating effects. Here is the code: 
+
+\lstinputlisting{examples/adding_clock.drom}
+
+and the rendered diagram: 
+
+\begin{tikzpicture}[thick]
+    \input{|"./wavedromtikz.py wavedrom examples/adding_clock.drom"}
+\end{tikzpicture}
+
+
+\subsection{Step 3. Putting all together}
+
+Typical timing diagram would have the clock and signals (wires). Multi-bit signals will try to grab the labels from "data" array. 
+
+\lstinputlisting{examples/putting_all_together.drom}
+
+\begin{tikzpicture}[thick]
+    \input{|"./wavedromtikz.py wavedrom examples/putting_all_together.drom"}
+\end{tikzpicture}
+
+
+\subsection{Step 4. Spacers and Gaps}
+
+\lstinputlisting{examples/spacers_and_gaps.drom}
+
+\begin{tikzpicture}[thick]
+    \input{|"./wavedromtikz.py wavedrom examples/spacers_and_gaps.drom"}
+\end{tikzpicture}
+
+
+\subsection{Step 5. The groups}
+WaveLanes can be united in named groups that are represented in form of arrays. 
+['group name', \{...\}, \{...\}, ...] The first entry of array is the group's name. The groups can be nested. 
+
+\lstinputlisting{examples/the_groups.drom}
+
+\begin{tikzpicture}[thick]
+    \input{|"./wavedromtikz.py wavedrom examples/the_groups.drom"}
+\end{tikzpicture}
+\end{document}
+
