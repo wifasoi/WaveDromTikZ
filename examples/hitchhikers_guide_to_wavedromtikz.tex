@@ -59,8 +59,44 @@ WaveLanes can be united in named groups that are represented in form of arrays.
 
 \lstinputlisting{examples/the_groups.drom}
 
+% \begin{tikzpicture}[thick]
+%     \input{|"./wavedromtikz.py wavedrom examples/the_groups.drom"}
+% \end{tikzpicture}
+
+Not supported
+
+\subsection{Step 6. Period and Phase}
+
+"period" and "phase" parameters can be used to adjust each WaveLane. 
+
+
+\lstinputlisting{examples/period_and_phase.drom}
+
 \begin{tikzpicture}[thick]
-    \input{|"./wavedromtikz.py wavedrom examples/the_groups.drom"}
+    \input{|"./wavedromtikz.py wavedrom examples/period_and_phase.drom"}
+\end{tikzpicture}
+
+\subsection{ Step 7.The config\{\} property}
+
+The config:\{...\} property controls different aspects of rendering.
+hscale
+config:\{hscale:\#\} property controls the horizontal scale of the diagram. User can put any integer number greater than 0. 
+
+\lstinputlisting{examples/hscale_1.drom}
+
+\subsubsection{ hscale = 1 (default) }
+\begin{tikzpicture}[thick]
+    \input{|"./wavedromtikz.py wavedrom examples/hscale_1.drom"}
+\end{tikzpicture}
+
+\subsubsection{ hscale = 2 }
+\begin{tikzpicture}[thick]
+    \input{|"./wavedromtikz.py wavedrom examples/hscale_2.drom"}
+\end{tikzpicture}
+
+\subsubsection{ hscale = 3 }
+\begin{tikzpicture}[thick]
+    \input{|"./wavedromtikz.py wavedrom examples/hscale_3.drom"}
 \end{tikzpicture}
 \end{document}
 
