@@ -80,7 +80,7 @@ TIKZ_HEADER = r"""
    \pgfmathsetlengthmacro{\spacerheight}{1.2*\waveheight}
    \pgfmathsetlengthmacro{\spacerwidth}{\transitionwidth}
    \pgfmathsetlengthmacro{\spacergap}{0.7*\transitionwidth}
-   
+
    % Mask off the waveform
    \fill [fill=white]
          ([xshift=-#1*\wavewidth-0.5*\spacergap-0.5*\spacerwidth, yshift=-0.5*\spacerheight]last brick)
@@ -90,7 +90,7 @@ TIKZ_HEADER = r"""
       .. controls +(-0.8*\spacergap, 0) and +(0.8*\spacergap, 0)
       .. ++(-\spacerwidth, -\spacerheight)
        ;
-   
+
    % Lines
    \draw ([xshift=-#1*\wavewidth-0.5*\spacergap-0.5*\spacerwidth, yshift=-0.5*\spacerheight]last brick)
       .. controls +(0.8*\spacergap, 0) and +(-0.8*\spacergap, 0)
@@ -99,7 +99,7 @@ TIKZ_HEADER = r"""
       .. controls +(-0.8*\spacergap, 0) and +(0.8*\spacergap, 0)
       .. ++(-\spacerwidth, -\spacerheight)
        ;
-   
+
 }
 
 % Generic mid-bus brick
@@ -116,7 +116,7 @@ TIKZ_HEADER = r"""
    \draw ([yshift= 0.5*\waveheight]last brick) -- ++(#1*\wavewidth,0)
          ([yshift=-0.5*\waveheight]last brick) -- ++(#1*\wavewidth,0)
        ;
-   
+
    \advancebrick{#1}
 }
 
@@ -129,12 +129,12 @@ TIKZ_HEADER = r"""
 \newcommand{\brickbit}[5]{
    \pgfmathsetlengthmacro{\vstart}{(#3-0.5)*\waveheight}
    \pgfmathsetlengthmacro{\vend}{(#4-0.5)*\waveheight}
-   
+
    % The bit value
    \draw [#2]
          ([yshift=\vend]last brick)
       |- ([yshift=\vstart, xshift=#1*\wavewidth]last brick);
-   
+
    % Arrow (if required)
    \ifthenelse{\equal{#5}{1}}{
       \path [decoration={ markings
@@ -145,7 +145,7 @@ TIKZ_HEADER = r"""
             ([yshift=\vend]last brick)
          -- ([yshift=\vstart]last brick);
    }{}
-   
+
    \advancebrick{#1}
 }
 
@@ -155,13 +155,13 @@ TIKZ_HEADER = r"""
 %  #3: Edge start (offset from bottom)
 \newcommand{\brickbitglitch}[3]{
    \pgfmathsetlengthmacro{\voffset}{(#3-0.5)*\waveheight}
-   
+
    \draw [#2]
          ([yshift=\voffset]last brick)
       -- ([xshift=0.5*\transitionwidth]last brick)
       -- ([yshift=\voffset, xshift=\transitionwidth]last brick)
       -- ++(#1*\wavewidth - \transitionwidth,0);
-   
+
    \advancebrick{#1}
 }
 
@@ -174,13 +174,13 @@ TIKZ_HEADER = r"""
 \newcommand{\bricksharpbittobit}[5]{
    \pgfmathsetlengthmacro{\vstart}{(#3-0.5)*\waveheight}
    \pgfmathsetlengthmacro{\vend}{(#4-0.5)*\waveheight}
-   
+
    % The transition and new bit
    \draw [#2]
          ([yshift=\vstart]last brick)
       -- ([yshift=\vend]last brick)
       -- ++(#1*\wavewidth,0);
-   
+
    % Arrow (if required)
    \ifthenelse{\equal{#5}{1}}{
       \ifthenelse{\not\equal{#3}{#4}}{
@@ -193,7 +193,7 @@ TIKZ_HEADER = r"""
             -- ([yshift=\vend]last brick);
       }{}
    }{}
-   
+
    \advancebrick{#1}
 }
 
@@ -205,13 +205,13 @@ TIKZ_HEADER = r"""
 \newcommand{\bricksharpbustobit}[4]{
    \pgfmathsetlengthmacro{\vstart}{((1-#3)-0.5)*\waveheight}
    \pgfmathsetlengthmacro{\vend}{(#3-0.5)*\waveheight}
-   
+
    % The transition and new bit
    \draw [#2]
          ([yshift=\vstart]last brick)
       -- ([yshift=\vend]last brick)
       -- ++(#1*\wavewidth,0);
-   
+
    % Arrow (if required)
    \ifthenelse{\equal{#4}{1}}{
       \path [decoration={ markings
@@ -222,7 +222,7 @@ TIKZ_HEADER = r"""
             ([yshift=\vstart]last brick)
          -- ([yshift=\vend]last brick);
    }{}
-   
+
    \advancebrick{#1}
 }
 
@@ -235,24 +235,24 @@ TIKZ_HEADER = r"""
 \newcommand{\bricksmoothbittobit}[5]{
    \pgfmathsetlengthmacro{\vstart}{(#4-0.5)*\waveheight}
    \pgfmathsetlengthmacro{\vend}{(#5-0.5)*\waveheight}
-   
+
    % Scale the transition depending on the magnitude of the level change
    \pgfmathsetlengthmacro{\thistranswidth}{abs(#4-#5)*\transitionwidth}
    \pgfmathsetlengthmacro{\thisleadwidth}{\transitionwidth - \thistranswidth}
-   
+
    % The lead up to the transition
    \draw [#2]
          ([yshift=\vstart]last brick)
       -- ([yshift=\vstart, xshift=\thisleadwidth]last brick);
-   
+
    % The transition itself
    \draw [#3]
          ([yshift=\vstart, xshift=\thisleadwidth]last brick)
       -- ([yshift=\vend, xshift=\transitionwidth]last brick)
       -- ++(#1*\wavewidth - \transitionwidth,0);
-   
+
    \coordinate (last transition) at ([xshift=0.5*\transitionwidth]last brick);
-   
+
    \advancebrick{#1}
 }
 
@@ -265,21 +265,21 @@ TIKZ_HEADER = r"""
 \newcommand{\brickcurvedbittobit}[5]{
    \pgfmathsetlengthmacro{\vstart}{(#4-0.5)*\waveheight}
    \pgfmathsetlengthmacro{\vend}{(#5-0.5)*\waveheight}
-   
+
    % The curve itself
    \draw [#2]
          ([yshift=\vstart]last brick)
       .. controls ([yshift=\vstart]last brick)
               and ([yshift=\vend, xshift=0.2*\curvedtransitionwidth]last brick)
       .. ([yshift=\vend, xshift=\curvedtransitionwidth]last brick);
-   
+
    % Start of the new bit
    \draw [#3]
          ([yshift=\vend, xshift=\curvedtransitionwidth]last brick)
       -- ++(#1*\wavewidth - \curvedtransitionwidth,0);
-   
+
    \coordinate (last transition) at ([xshift=0.5*\curvedtransitionwidth]last brick);
-   
+
    \advancebrick{#1}
 }
 
@@ -290,16 +290,16 @@ TIKZ_HEADER = r"""
 %  #4: Bit (offset from bottom)
 \newcommand{\bricksmoothbittobus}[4]{
    \pgfmathsetlengthmacro{\voffset}{(#4-0.5)*\waveheight}
-   
+
    % Scale the transition depending on the magnitude of the level change
    \pgfmathsetlengthmacro{\thistranswidth}{(abs(#4-0.5)+0.5)*\transitionwidth}
    \pgfmathsetlengthmacro{\thisleadwidth}{\transitionwidth - \thistranswidth}
-   
+
    % The lead up to the transition
    \draw [#2]
          ([yshift=\voffset]last brick)
       -- ([yshift=\voffset, xshift=\thisleadwidth]last brick);
-   
+
    % Open-up the bus
    \draw [#3]
          ([xshift=#1*\wavewidth,    yshift= 0.5*\waveheight]last brick)
@@ -308,9 +308,9 @@ TIKZ_HEADER = r"""
       -- ([xshift=\transitionwidth, yshift=-0.5*\waveheight]last brick)
       -- ([xshift=#1*\wavewidth,    yshift=-0.5*\waveheight]last brick)
       ;
-   
+
    \coordinate (last transition) at ([xshift=0.5*\transitionwidth]last brick);
-   
+
    \advancebrick{#1}
 }
 
@@ -319,14 +319,14 @@ TIKZ_HEADER = r"""
 %  #2: Bus style
 %  #3: Bit style
 \newcommand{\brickbustobus}[3]{
-   
+
    % Close-down the old bus
    \draw [#2]
          ([yshift= 0.5*\waveheight]    last brick)
       -- ([xshift=0.5*\transitionwidth]last brick)
       -- ([yshift=-0.5*\waveheight]    last brick)
       ;
-   
+
    % Open-up the new bus
    \draw [#3]
          ([xshift=#1*\wavewidth,    yshift= 0.5*\waveheight]last brick)
@@ -335,9 +335,9 @@ TIKZ_HEADER = r"""
       -- ([xshift=\transitionwidth, yshift=-0.5*\waveheight]last brick)
       -- ([xshift=#1*\wavewidth,    yshift=-0.5*\waveheight]last brick)
       ;
-   
+
    \coordinate (last transition) at ([xshift=0.5*\transitionwidth]last brick);
-   
+
    \advancebrick{#1}
 }
 
@@ -348,11 +348,11 @@ TIKZ_HEADER = r"""
 %  #4: Bit (offset from bottom)
 \newcommand{\bricksmoothbustobit}[4]{
    \pgfmathsetlengthmacro{\voffset}{(#4-0.5)*\waveheight}
-   
+
    % Scale the transition depending on the magnitude of the level change
    \pgfmathsetlengthmacro{\thistranswidth}{(abs(#4-0.5)+0.5)*\transitionwidth}
    \pgfmathsetlengthmacro{\thisleadwidth}{\transitionwidth - \thistranswidth}
-   
+
    % Close-down the bus
    \draw [#2]
          ([                         yshift= 0.5*\waveheight]last brick)
@@ -361,14 +361,14 @@ TIKZ_HEADER = r"""
       -- ([xshift=\thisleadwidth,   yshift=-0.5*\waveheight]last brick)
       -- ([                         yshift=-0.5*\waveheight]last brick)
       ;
-   
+
    % The new bit
    \draw [#3]
          ([xshift=\transitionwidth, yshift=\voffset]last brick)
       -- ([xshift=#1*\wavewidth,    yshift=\voffset]last brick);
-   
+
    \coordinate (last transition) at ([xshift=0.5*\transitionwidth]last brick);
-   
+
    \advancebrick{#1}
 }
 
@@ -379,11 +379,11 @@ TIKZ_HEADER = r"""
 %  #4: Bit (offset from bottom)
 \newcommand{\brickcurvedbustobit}[4]{
    \pgfmathsetlengthmacro{\voffset}{(#4-0.5)*\waveheight}
-   
+
    % Scale the transition depending on the magnitude of the level change
    \pgfmathsetlengthmacro{\thistranswidth}{(abs(#4-0.5)+0.5)*\transitionwidth}
    \pgfmathsetlengthmacro{\thisleadwidth}{\transitionwidth - \thistranswidth}
-   
+
    % Close-down the bus
    \draw [#2]
          ([yshift= 0.5*\waveheight]last brick)
@@ -394,14 +394,14 @@ TIKZ_HEADER = r"""
               and ([                                   yshift=-0.5*\waveheight]last brick)
       .. ([yshift=-0.5*\waveheight]last brick)
       ;
-   
+
    % The new bit
    \draw [#3]
          ([xshift=\curvedtransitionwidth, yshift=\voffset]last brick)
       -- ([xshift=#1*\wavewidth,    yshift=\voffset]last brick);
-   
+
    \coordinate (last transition) at ([xshift=0.5*\curvedtransitionwidth]last brick);
-   
+
    \advancebrick{#1}
 }
 """
@@ -494,7 +494,7 @@ def get_brick(wave, odd_brick, brick_width):
    """
    Return a LaTeX string which inserts a brick of the type indicated by wave.
    """
-   
+
    if wave.wave_type == "bus":
       # Just a bus of the given style
       return r"\brickbus{%f}{%s}"%(brick_width, wave.bus_style)
@@ -521,7 +521,7 @@ def get_transition_brick(last_wave, wave, brick_width):
    """
    Return a LaTeX string which inserts a transition brick from last_wave to wave.
    """
-   
+
    if last_wave.wave_type == wave.wave_type == "bus":
       # Bus-to-bus
       if last_wave.glitch or last_wave.bus_style != wave.bus_style:
@@ -659,26 +659,26 @@ def render_waveform(signal_params):
    data   = signal_params.get("data", [])
    phase  = signal_params.get("phase", 0.0)
    period = signal_params.get("period", 1.0)
-   
+
    assert period >= 0.0, "Period must be positive or zero."
-   
+
    # No waveform for empty description
    if wave == "":
       return ""
-   
+
    # Pad node list
    node += "." * max(0, len(wave)-len(node))
-   
+
    # Split up data in strings
    if type(data) is str:
       data = data.split(" ")
-   
+
    # Set up the 'last brick' pointer at the start of the waveform.
    out = [r"\coordinate (last brick) at (last waveform);"]
-   
+
    # Start assuming the signal is x if not otherwise specified
    last_signal = "x" if wave[0] in ".|" else wave[0]
-   
+
    # Draw the first part of the waveform to get the phase right
    if phase < 0.0:
       # -ve phase advances the waveform rightward
@@ -686,17 +686,17 @@ def render_waveform(signal_params):
    if phase > 0.0:
       # +ve phase advances the waveform leftward
       out.append(r"\truncatewaveform{%f}{%f}{%d}"%(period,phase*2.0,len(wave)*2))
-   
+
    # Has the start of a bus been observed?
    bus_started = False
    bus_number  = 0
-   
+
    # Draw the waveform, one timeslot at a time
    for time, (signal, node_name) in enumerate(zip(wave, node)):
       # Add a coordinate (which may be overwritten by a transition brick) to
       # indicate the current transition point
       out.append(r"\coordinate (last transition) at (last brick);")
-      
+
       # Add coordinates for bus labels
       if signal not in '.|' and bus_started:
          out.append(r"\coordinate (bus %d) at ($(bus start)!0.5!(last brick)$);"%(
@@ -704,14 +704,14 @@ def render_waveform(signal_params):
          ))
          bus_number += 1
          bus_started = False
-      
+
       # Update a pointer to the start of every bus
       if signal in '=2345':
          # Add the label for the last bus
-         
+
          out.append(r"\coordinate (bus start) at (last brick);")
          bus_started = True
-      
+
       continued_signal = last_signal if signal in ".|" else signal
       # First half of the waveform/transition
       if time == 0 or signal in ".|":
@@ -721,20 +721,20 @@ def render_waveform(signal_params):
                                         , WAVEDROM_NAMES[continued_signal]
                                         , period
                                         ))
-      
+
       # Second half of the waveform
       out.append(get_brick(WAVEDROM_NAMES[continued_signal], 1, period))
-      
+
       # Record transition node positions
       if node_name != ".":
          out.append(r"\coordinate (%s) at (last transition);"%(node_name))
-      
+
       # Draw the spacer spacer
       if signal == "|":
          out.append(r"\brickspaceroverly{%f}"%(period))
-      
+
       last_signal = continued_signal
-   
+
    # Add final bus label
    if bus_started:
       out.append(r"\coordinate (bus %d) at ($(bus start)!0.5!(last brick)$);"%(
@@ -742,11 +742,11 @@ def render_waveform(signal_params):
       ))
       bus_number += 1
       bus_started = False
-   
+
    # Add bus labels
    for i, datum in zip(range(bus_number), data):
       out.append(r"\busdata{bus %d}{%s};"%(i, datum))
-   
+
    return "\n".join(out)
 
 
@@ -777,9 +777,9 @@ def render_help_lines(wavedrom):
                       - int(signal.get("phase", 0.0)))
                 for signal in wavedrom["signal"]
               )
-   
+
    height = len(wavedrom["signal"])
-   
+
    return r"""
       \foreach \tick in {0,...,%d}{
          \draw [draw=black!75!white, dotted]
@@ -814,7 +814,7 @@ if __name__=="__main__":
       else:
          sys.stderr.write("Usage: %s {header | signal [signal-description] | wavedrom [filename]}\n"%(
             sys.argv[0]
-            
+
          ))
          sys.exit(-1)
    except (BrokenPipeError, IOError):
