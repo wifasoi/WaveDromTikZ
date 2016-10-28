@@ -3,6 +3,7 @@
 import re
 import yaml
 import argparse
+import sys
 
 from math import ceil
 from collections import namedtuple
@@ -803,12 +804,18 @@ def render_wavedrom(wavedrom):
 def print_header(args):
     print(TIKZ_HEADER)
 
-
 def print_render_signal(args):
     print(render_signal(yaml.load(" ".join(args.signal))))
 
 def print_render_wavedrom(args):
-    print(render_wavedrom(yaml.load(open(args.path, "r").read())))
+
+    with open(args.path, 'r') as input_file:
+        wavedrom = render_wavedrom(yaml.load(input_file.read()))
+        if args.output == sys.stdout:
+            print(wavedrom)
+        else:
+            with open(args.output, 'w') as output_file:
+                output_file.write(str(wavedrom))
 
 if __name__=="__main__":
 
@@ -824,6 +831,7 @@ if __name__=="__main__":
    signal_parser.set_defaults(func=print_render_signal)
 
    wavedrom_parser = subparsers.add_parser('wavedrom')
+   wavedrom_parser.add_argument('-o', '--output',  default=sys.stdout, type=str, help='output TikZ file')
    wavedrom_parser.add_argument('path', type=str, help='input wavedrom file')
    wavedrom_parser.set_defaults(func=print_render_wavedrom)
 
