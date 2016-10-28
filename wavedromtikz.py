@@ -4,9 +4,29 @@ import re
 import yaml
 import argparse
 import sys
+import os.path
 
 from math import ceil
 from collections import namedtuple
+
+
+STANDALONE_TEX_HEADER = r"""
+\documentclass[crop,tikz]{standalone}
+\usepackage{tikz}
+\usepackage{ifthen}
+\usepackage{listings}
+
+\usetikzlibrary{ calc, positioning, decorations.markings, patterns}
+% all other packages and stuff you need for the picture
+%
+\begin{document}
+\begin{tikzpicture}[thick]
+"""
+
+STANDALONE_TEX_FOOTER = r"""
+\end{tikzpicture}
+\end{document}
+"""
 
 # A TikZ (LaTeX) header to be included before a waveform diagram. Defines
 # various primitives for drawing parts of a waveform.
@@ -811,9 +831,15 @@ def print_render_wavedrom(args):
 
     with open(args.path, 'r') as input_file:
         wavedrom = render_wavedrom(yaml.load(input_file.read()))
+
+        if args.standalone:
+            wavedrom = "\n".join([STANDALONE_TEX_HEADER, wavedrom, STANDALONE_TEX_FOOTER])
         if args.output == sys.stdout:
             print(wavedrom)
         else:
+            if os.path.isdir(args.output):
+                args.output = os.path.join(args.output, os.path.splitext(os.path.basename(args.path))[0] + ".tikz")
+                print(args.output)
             with open(args.output, 'w') as output_file:
                 output_file.write(str(wavedrom))
 
@@ -832,6 +858,7 @@ if __name__=="__main__":
 
    wavedrom_parser = subparsers.add_parser('wavedrom')
    wavedrom_parser.add_argument('-o', '--output',  default=sys.stdout, type=str, help='output TikZ file')
+   wavedrom_parser.add_argument('-s', '--standalone', default=False, action='store_true', help='Create standalone tex file')
    wavedrom_parser.add_argument('path', type=str, help='input wavedrom file')
    wavedrom_parser.set_defaults(func=print_render_wavedrom)
 
