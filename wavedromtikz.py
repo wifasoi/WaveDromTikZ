@@ -2,6 +2,7 @@
 
 import re
 import yaml
+import argparse
 
 from math import ceil
 from collections import namedtuple
@@ -799,23 +800,35 @@ def render_wavedrom(wavedrom):
                                )
                     )
 
+def print_header(args):
+    print(TIKZ_HEADER)
+
+
+def print_render_signal(args):
+    print(render_signal(yaml.load(" ".join(args.signal))))
+
+def print_render_wavedrom(args):
+    print(render_wavedrom(yaml.load(open(args.path, "r").read())))
 
 if __name__=="__main__":
-   import sys
+
+   parser = argparse.ArgumentParser()
+
+   subparsers = parser.add_subparsers()
+
+   header_parser = subparsers.add_parser('header')
+   header_parser.set_defaults(func=print_header)
+
+   signal_parser = subparsers.add_parser('signal')
+   signal_parser.add_argument('signal', type=str, help='signal description')
+   signal_parser.set_defaults(func=print_render_signal)
+
+   wavedrom_parser = subparsers.add_parser('wavedrom')
+   wavedrom_parser.add_argument('path', type=str, help='input wavedrom file')
+   wavedrom_parser.set_defaults(func=print_render_wavedrom)
 
    try:
-      mode = sys.argv[1] if len(sys.argv) >= 2 else ""
-      if mode == "header":
-         print(TIKZ_HEADER)
-      elif mode == "signal":
-         print(render_signal(yaml.load(" ".join(sys.argv[2:]))))
-      elif mode == "wavedrom":
-         print(render_wavedrom(yaml.load(open(sys.argv[2], "r").read())))
-      else:
-         sys.stderr.write("Usage: %s {header | signal [signal-description] | wavedrom [filename]}\n"%(
-            sys.argv[0]
-
-         ))
-         sys.exit(-1)
+      args = parser.parse_args()
+      args.func(args)
    except (BrokenPipeError, IOError):
        pass
