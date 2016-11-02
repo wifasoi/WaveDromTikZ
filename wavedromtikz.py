@@ -785,7 +785,7 @@ def render_signal(signal_params):
       \end{scope}
       \coordinate (last waveform) at ([yshift=-\wavesep]last waveform);
    """%(
-      signal_params.get("name", ""),
+      signal_params.get("name", "").replace('_','\_'),
       render_waveform(signal_params)
    )
 
