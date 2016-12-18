@@ -692,7 +692,7 @@ def render_waveform(signal_params):
     node += "." * max(0, len(wave)-len(node))
 
     # Split up data in strings
-    if isinstance(data) is str:
+    if isinstance(data, str):
        data = data.split(" ")
 
     # Set up the 'last brick' pointer at the start of the waveform.
