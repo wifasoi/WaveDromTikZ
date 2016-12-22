@@ -7,7 +7,6 @@ import os.path
 
 from collections import namedtuple
 
-
 STANDALONE_TEX_HEADER = r"""
 \documentclass[crop,tikz]{standalone}
 \usepackage{tikz}
@@ -426,82 +425,91 @@ TIKZ_HEADER = r"""
 }
 """
 
+BUSLABEL = r"\coordinate (bus %d) at ($(bus start)!0.5!(last brick)$);"
+
 WaveSection = namedtuple("WaveSection",
-                         [ "wave_type", # Either "bus", "bit"
-                           "glitch", # Glitch on continuations of same signal
-                           "bus_style", # TikZ styling for bus fill
-                           "bit_style", # TikZ styling for bit lines
-                           "bit_start_position", # Starting y-offset of bit waves
-                           "bit_end_position", # Ending y-offset of bit waves
-                           "bit_transition" # Either "sharp", "sharparrow", "smooth" or "curved"
+                         ["wave_type",  # Either "bus", "bit"
+                          "glitch",  # Glitch on continuations of same signal
+                          "bus_style",  # TikZ styling for bus fill
+                          "bit_style",  # TikZ styling for bit lines
+                          "bit_start_position",  # Starting y-offset of bit waves
+                          "bit_end_position",  # Ending y-offset of bit waves
+                          "bit_transition"  # Either "sharp", "sharparrow", "smooth" or "curved"
                           ]
-                        )
+                         )
 
 # Dictionary containing various WaveSection definitions for different types of
 # waveform.
 WAVES = {}
 
 # High impedance
-WAVES["z"] = WaveSection( wave_type          = "bit",
-                          glitch             = False,
-                          bus_style          = None,
-                          bit_style          = "",
-                          bit_start_position = 0.5,
-                          bit_end_position   = 0.5,
-                          bit_transition     = "curved"
-                        )
+WAVES["z"] = WaveSection(wave_type="bit",
+                         glitch=False,
+                         bus_style=None,
+                         bit_style="",
+                         bit_start_position=0.5,
+                         bit_end_position=0.5,
+                         bit_transition="curved"
+                         )
 
 # Logic levels
 WAVES["logic"] = {}
 for level in [0, 1]:
-    WAVES["logic"][level] = WaveSection( wave_type          = "bit",
-                                         glitch             = True,
-                                         bus_style          = None,
-                                         bit_style          = "",
-                                         bit_start_position = level,
-                                         bit_end_position   = level,
-                                         bit_transition     = "smooth"
-                                       )
+    WAVES["logic"][level] = WaveSection(wave_type="bit",
+                                        glitch=True,
+                                        bus_style=None,
+                                        bit_style="",
+                                        bit_start_position=level,
+                                        bit_end_position=level,
+                                        bit_transition="smooth"
+                                        )
 
 # Pulled-Logic levels
 WAVES["pulled"] = {}
 for level in [0, 1]:
-    WAVES["pulled"][level] = WaveSection( wave_type          = "bit",
-                                          glitch             = True,
-                                          bus_style          = None,
-                                          bit_style          = "wave pulled",
-                                          bit_start_position = level,
-                                          bit_end_position   = level,
-                                          bit_transition     = "curved"
-                                        )
+    WAVES["pulled"][level] = WaveSection(wave_type="bit",
+                                         glitch=True,
+                                         bus_style=None,
+                                         bit_style="wave pulled",
+                                         bit_start_position=level,
+                                         bit_end_position=level,
+                                         bit_transition="curved"
+                                         )
 
 # Clock signals
 WAVES["clk"] = {}
-for clk_edge, first, second in [ (0, 0,0), (1, 1,1)
-                                , ("posedge", 1,0), ("negedge", 0,1)
-                                ]:
+for clk_edge, first, second in [(0, 0, 0),
+                                (1, 1, 1),
+                                ("posedge", 1, 0),
+                                ("negedge", 0, 1)]:
     WAVES["clk"][clk_edge] = {}
     for has_arrow in [False, True]:
         WAVES["clk"][clk_edge][has_arrow] \
-            = WaveSection(wave_type="bit", glitch=True, bus_style=None, bit_style="", bit_start_position=first, bit_end_position=second, bit_transition="sharparrow" if has_arrow else "sharp"
+            = WaveSection(wave_type="bit",
+                          glitch=True,
+                          bus_style=None,
+                          bit_style="",
+                          bit_start_position=first,
+                          bit_end_position=second,
+                          bit_transition="sharparrow" if has_arrow else "sharp"
                           )
 
 # Buses
 WAVES["bus"] = {}
-for name, style, glitch in [ ("x",      "wave x",         False),
-                              ("bus",    "wave bus",       True),
-                              ("yellow", "wave busyellow", True),
-                              ("orange", "wave busorange", True),
-                              ("blue",   "wave busblue",   True)
+for name, style, glitch in [("x",      "wave x",         False),
+                            ("bus",    "wave bus",       True),
+                            ("yellow", "wave busyellow", True),
+                            ("orange", "wave busorange", True),
+                            ("blue",   "wave busblue",   True)
                             ]:
-    WAVES["bus"][name] = WaveSection( wave_type          = "bus",
-                                      glitch             = glitch,
-                                      bus_style          = style,
-                                      bit_style          = None,
-                                      bit_start_position = None,
-                                      bit_end_position   = None,
-                                      bit_transition     = "smooth"
-                                    )
+    WAVES["bus"][name] = WaveSection(wave_type="bus",
+                                     glitch=glitch,
+                                     bus_style=style,
+                                     bit_style=None,
+                                     bit_start_position=None,
+                                     bit_end_position=None,
+                                     bit_transition="smooth"
+                                     )
 
 
 def get_brick(wave, odd_brick, brick_width):
@@ -540,14 +548,16 @@ def get_transition_brick(last_wave, wave, brick_width):
         # Bus-to-bus
         if last_wave.glitch or last_wave.bus_style != wave.bus_style:
             # A gitch or a change
-            return r"\brickbustobus{%f}{%s}{%s}" % (brick_width, last_wave.bus_style, wave.bus_style
-                                                    )
+            return r"\brickbustobus{%f}{%s}{%s}" % (brick_width,
+                                                    last_wave.bus_style,
+                                                    wave.bus_style)
         else:
             # Bus is just a continuation of the last one
             return get_brick(wave, False, brick_width)
     elif last_wave.wave_type == wave.wave_type == "bit":
         # Bit-to-bit transition
-        if last_wave.glitch and last_wave.bit_end_position == wave.bit_start_position:
+        if last_wave.glitch and \
+                last_wave.bit_end_position == wave.bit_start_position:
             # A glitch
             if wave.bit_transition in ("sharp", "sharparrow"):
                 # Sharp glitch, possibly with arrow
@@ -560,7 +570,9 @@ def get_transition_brick(last_wave, wave, brick_width):
                 )
             else:
                 # All other glitches
-                return r"\brickbitglitch{%f}{%s}{%s}" % (brick_width, wave.bit_style, wave.bit_start_position
+                return r"\brickbitglitch{%f}{%s}{%s}" % (brick_width,
+                                                         wave.bit_style,
+                                                         wave.bit_start_position
                                                          )
         elif last_wave.bit_end_position == wave.bit_start_position:
             # Same-level, no transition to make
@@ -712,9 +724,7 @@ def render_waveform(signal_params):
 
         # Add coordinates for bus labels
         if signal not in '.|' and bus_started:
-            out.append(r"\coordinate (bus %d) at ($(bus start)!0.5!(last brick)$);" % (
-                bus_number
-            ))
+            out.append(BUSLABEL % (bus_number))
             bus_number += 1
             bus_started = False
 
@@ -730,7 +740,9 @@ def render_waveform(signal_params):
         if time == 0 or signal in ".|":
             out.append(get_brick(WAVEDROM_NAMES[continued_signal], 0, period))
         else:
-            out.append(get_transition_brick(WAVEDROM_NAMES[last_signal], WAVEDROM_NAMES[continued_signal], period
+            out.append(get_transition_brick(WAVEDROM_NAMES[last_signal],
+                                            WAVEDROM_NAMES[continued_signal],
+                                            period
                                             ))
 
         # Second half of the waveform
@@ -748,9 +760,7 @@ def render_waveform(signal_params):
 
     # Add final bus label
     if bus_started:
-        out.append(r"\coordinate (bus %d) at ($(bus start)!0.5!(last brick)$);" % (
-            bus_number
-        ))
+        out.append(BUSLABEL % (bus_number))
         bus_number += 1
         bus_started = False
 
@@ -763,8 +773,8 @@ def render_waveform(signal_params):
 
 def render_signal(signal_params):
     """
-    Produce a TikZ string defining the given waveform line with parameters as used
-    by WaveDrom.
+    Produce a TikZ string defining the given waveform line with parameters as
+    used by WaveDrom.
     """
     return r"""
        \signallabel{%s}
@@ -803,9 +813,10 @@ def render_help_lines(wavedrom):
 
 
 def render_wavedrom(wavedrom):
-    return r"%s%s%s" % (TIKZ_HEADER, render_help_lines(wavedrom), "\n".join(render_signal(signal_params)
-                                                                            for signal_params in wavedrom["signal"]
-                                                                            )
+    return r"%s%s%s" % (TIKZ_HEADER,
+                        render_help_lines(wavedrom),
+                        "\n".join(render_signal(signal_params)
+                                  for signal_params in wavedrom["signal"])
                         )
 
 
@@ -834,6 +845,7 @@ def print_render_wavedrom(args):
                 print(args.output)
             with open(args.output, 'w') as output_file:
                 output_file.write(str(wavedrom))
+
 
 if __name__ == "__main__":
 
