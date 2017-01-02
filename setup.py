@@ -8,4 +8,4 @@ setup(name='WaveDromTikZ',
       author='Jonathan Heathcote',
       author_email='mail@jhnet.co.uk',
       scripts=['wavedromtikz.py'],
-     )
+      )
