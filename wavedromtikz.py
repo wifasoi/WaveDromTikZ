@@ -813,7 +813,13 @@ def render_help_lines(wavedrom):
 
 
 def render_wavedrom(wavedrom):
-    return r"%s%s%s" % (TIKZ_HEADER,
+    wavedromString = TIKZ_HEADER
+    try:
+        hscale = wavedrom["config"]["hscale"]
+    except KeyError:
+        hscale = 1
+    wavedromString = wavedromString.replace("wavewidth}{1em}", "wavewidth}" + "{" + str(hscale) + "em}")
+    return r"%s%s%s" % (wavedromString,
                         render_help_lines(wavedrom),
                         "\n".join(render_signal(signal_params)
                                   for signal_params in wavedrom["signal"])
@@ -825,13 +831,13 @@ def print_header(args):
 
 
 def print_render_signal(args):
-    print(render_signal(yaml.load(" ".join(args.signal))))
+    print(render_signal(yaml.safe_load(" ".join(args.signal))))
 
 
 def print_render_wavedrom(args):
 
     with open(args.path, 'r') as input_file:
-        wavedrom = render_wavedrom(yaml.load(input_file.read()))
+        wavedrom = render_wavedrom(yaml.safe_load(input_file.read()))
 
         if args.standalone:
             wavedrom = "\n".join(
