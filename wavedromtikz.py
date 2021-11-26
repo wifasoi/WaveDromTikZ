@@ -4,7 +4,7 @@ import yaml
 import argparse
 import sys
 import os.path
-
+from string import Template
 from collections import namedtuple
 
 STANDALONE_TEX_HEADER = r"""
@@ -27,7 +27,7 @@ STANDALONE_TEX_FOOTER = r"""
 
 # A TikZ (LaTeX) header to be included before a waveform diagram. Defines
 # various primitives for drawing parts of a waveform.
-TIKZ_HEADER = r"""
+TIKZ_HEADER = Template(r"""
 % Seperation between lines
 \pgfmathsetlengthmacro{\wavesep}{2.0em}
 
@@ -35,7 +35,7 @@ TIKZ_HEADER = r"""
 \pgfmathsetlengthmacro{\waveheight}{1.2em}
 
 % Width of a brick (half a cycle)
-\pgfmathsetlengthmacro{\wavewidth}{1em}
+\pgfmathsetlengthmacro{\wavewidth}{${size}em}
 
 % Width of the slant on slanted signal changes
 \pgfmathsetlengthmacro{\transitionwidth}{0.3em}
@@ -93,8 +93,8 @@ TIKZ_HEADER = r"""
          rectangle ++(#3*#1*\wavewidth-#2*\wavewidth,-1.2*\waveheight);
 }
 
-% Spacer Brick Overlay
-%  #1: brick width
+% Spacer Brick Overlay 
+%  #1: brick width 
 \newcommand{\brickspaceroverly}[1]{
    \pgfmathsetlengthmacro{\spacerheight}{1.2*\waveheight}
    \pgfmathsetlengthmacro{\spacerwidth}{\transitionwidth}
@@ -424,6 +424,7 @@ TIKZ_HEADER = r"""
    \advancebrick{#1}
 }
 """
+)
 
 BUSLABEL = r"\coordinate (bus %d) at ($(bus start)!0.5!(last brick)$);"
 
@@ -813,13 +814,8 @@ def render_help_lines(wavedrom):
 
 
 def render_wavedrom(wavedrom):
-    wavedromString = TIKZ_HEADER
-    try:
-        hscale = wavedrom["config"]["hscale"]
-    except KeyError:
-        hscale = 1
-    wavedromString = wavedromString.replace("wavewidth}{1em}", "wavewidth}" + "{" + str(hscale) + "em}")
-    return r"%s%s%s" % (wavedromString,
+    hscale = wavedrom.get("config", {}).get("hscale",1)
+    return r"%s%s%s" % (TIKZ_HEADER.safe_substitute(size=hscale),
                         render_help_lines(wavedrom),
                         "\n".join(render_signal(signal_params)
                                   for signal_params in wavedrom["signal"])
