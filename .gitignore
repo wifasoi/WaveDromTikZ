@@ -1,2 +1,4 @@
 bld
 *.swp
+.venv
+.vscode
